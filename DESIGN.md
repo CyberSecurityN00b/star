@@ -50,7 +50,7 @@ Agents will heed the following:
 - Agents will be compiled to be as small as possible, to include running the binaries through `upx`.
 - Where possible, hardcoded strings should be avoided in agents.
     - A sort of "bytecode" will be used in communicating between agents and the terminal. These "bytecode" commands are not mapped to a specific value, but instead will be set at compile-time using golang's enum/iota features. These "bytecode" communications include both commands and non-output responses.
-- At build time, an agent will be generated for each GOOS/GOARCH. Binaries will be saved to `./agents` and have the naming convention of `staragent_<GOOS>_<GOARCH>[.ext]`
+- At build time, an agent will be generated for each GOOS/GOARCH. Binaries will be saved to `./agents` and have the naming convention of `staragent_<GOOS>_<GOARCH>[.exe]`
 - The terminal's public certificate will be embedded in the agent.
 - Hardcoded configuration options will be kept in the `agentconfig.go` file for ease of use, but will be overridden as appropriate by execution arguments.
 
@@ -98,7 +98,7 @@ Agent execution flow should be similar to:
 Terminals will heed the following:
 
 - There will only ever be a single terminal in a constellation.
-- When built, terminals for supported GOOS/GOARCH will be generated in `./bin/external` and follow the naming convention of `starterminal_<GOOS>_<GOARCH>`. An additional binary of `starterminal` will be generated in `./bin/` for the local environment.
+- When built, terminals for supported GOOS/GOARCH will be generated in `./bin/external` and follow the naming convention of `starterminal_<GOOS>_<GOARCH>\[.exe\]`. An additional binary of `starterminal` will be generated in `./bin/` for the local environment.
 
 Terminal execution/use flow should be similar to:
 
