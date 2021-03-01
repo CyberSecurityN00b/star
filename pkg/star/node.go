@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 )
 
+// The Node type serves as the overarching data structure for tracking STAR nodes.
 type Node struct {
 	ID        NodeID
 	Type      NodeType
@@ -40,6 +41,6 @@ const (
 	// NodeTypeTerminal identifies the Node as being a user terminal
 	NodeTypeTerminal NodeType = iota + 1
 
-	// NodeTypeAgent identifies the Node as being a remote agent
-	NodeTypeAgent
+	// NodeTypeAgent001 identifies the Node as being a version 001 remote agent
+	NodeTypeAgent001
 )

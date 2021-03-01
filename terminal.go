@@ -7,6 +7,6 @@ import (
 )
 
 func main() {
-	fmt.Println(star.NodeType_Terminal)
+	fmt.Println(star.NodeTypeTerminal)
 	fmt.Println("NodeID:", star.NewNodeID())
 }
