@@ -1,10 +1,17 @@
 package star
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"math"
 	"strings"
 )
+
+// NewUID fills a byte array with random data
+func NewUID(id []byte) {
+	rand.Read(id[:])
+	return
+}
 
 // SqrtedString turns a []byte into a hexadecimal string that is split into
 // substrings demarcated by the specified separator string. The number of

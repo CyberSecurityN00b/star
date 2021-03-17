@@ -1,18 +1,25 @@
 package star
 
-import (
-	"crypto"
-	"crypto/rand"
-	"time"
-)
+import "time"
 
-// The Message type serves as the overarching data structure for STAR communications.
+// The Message type serves as the overarching data structure for STAR messages.
 type Message struct {
-	ID          MessageID
-	Destination NodeID
-	Meta        MessageMeta
-	Type        MessageType
-	Content     MessageContent
+	ID          MessageID   `json:"id"`
+	Destination NodeID      `json:"destination"`
+	Meta        MessageMeta `json:"meta"`
+	Type        MessageType `json:"type"`
+	Request     MessageData `json:"request-data"`
+	Response    MessageData `json:"response-data"`
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************** NewMessage *********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+// NewMessage creates and sets up a bare-bones STAR Message
+func NewMessage() (msg Message) {
+	NewUID([]byte(msg.ID[:]))
+	return
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -21,13 +28,7 @@ type Message struct {
 
 // The MessageID type is a fixed-length byte array which should serve as a UUID
 // for each Message
-type MessageID [25]byte
-
-// NewMessageID creates a new MessageID type filled with random bytes
-func NewMessageID() (id MessageID) {
-	rand.Read([]byte(id[:]))
-	return
-}
+type MessageID [16]byte
 
 // Formats a MessageID into a print-friendly string
 func (id MessageID) String() string {
@@ -41,12 +42,12 @@ func (id MessageID) String() string {
 // The MessageMeta type tracks metadata of STAR communications, largely for
 // timestamp and tracking purposes, which are not relevant to the communication
 type MessageMeta struct {
-	RequestSent      time.Time
-	RequestReceived  time.Time
-	HandlingStarted  time.Time
-	HandlingStopped  time.Time
-	ResponseSent     time.Time
-	ResponseReceived time.Time
+	RequestSent       time.Time `json:"request-sent"`
+	RequestReceived   time.Time `json:"request-received"`
+	ProcessingStarted time.Time `json:"processing-started"`
+	ProcessingStopped time.Time `json:"processing-stopped"`
+	ResponseSent      time.Time `json:"response-sent"`
+	ResponseReceived  time.Time `json:"response-received"`
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -60,40 +61,182 @@ const (
 	// MessageTypeError identifies the Message as being in relation to an
 	// error that occurred on the Agent and is being relayed to the Terminal
 	// user.
-	MessageTypeError MessageType = iota + 1
+	//
+	// REQUESTS = N/A
+	//
+	// RESPONDS = Agent
+	MessageTypeError MessageType = 0x01
 
 	// MessageTypeSync identifies the Message as being a synchronization
 	// request from the Terminal to Agents. The Message will be forwarded to
 	// all neighboring Agents.
-	MessageTypeSync
+	//
+	// REQUESTS = Terminal
+	//
+	// RESPONDS = Agent
+	MessageTypeSync MessageType = 0x02
 
 	// MessageTypeKillSwitch identifies the Message as being a self-destruct
 	// request from the Terminal to Agents. The Message will *only* be
 	// forwarded if the correct confirmation code is passed.
-	MessageTypeKillSwitch
+	//
+	// REQUESTS = Terminal
+	//
+	// RESPONDS = N/A
+	MessageTypeKillSwitch MessageType = 0x04
 
 	// MessageTypeCommand identifies the Message as being related to the
 	// execution or results of a command.
-	MessageTypeCommand
+	//
+	// REQUESTS = Terminal
+	//
+	// RESPONDS = Agent
+	MessageTypeCommand MessageType = 0x08
+
+	// MessageTypeFileUpload identifies the Message as being related to the
+	// transfer of a file from a Terminal to an Agent.
+	//
+	// REQUESTS = Terminal
+	//
+	// RESPONDS = Agent
+	MessageTypeFileUpload MessageType = 0x16
+
+	// MessageTypeFileDownload identifies the Message as being related to the
+	// transfer of a file from an Agent to a Terminal.
+	//
+	// REQUESTS = Terminal
+	//
+	// RESPONDS = Agent
+	MessageTypeFileDownload MessageType = 0x32
+
+	// MessageTypeStream identifies the Message as being related to
+	// bi-directional interactive traffic (i.e., a command prompt)
+	//
+	// REQUESTS = Agent (Provides output, seeks input)
+	//
+	// RESPONDS = Terminal (Provides input)
+	MessageTypeStream MessageType = 0x64
 )
 
 ///////////////////////////////////////////////////////////////////////////////
-/****************************** MessageContent *******************************/
+/******************************* MessageData *********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-// The MessageContent type is a placeholder for interfaces related to the
-// different types of messages.
-type MessageContent []byte
+// The MessageData type is a placeholder for message specific data structs
+type MessageData []byte
 
-// The MessageContentRaw type enforces the handling of MessageContent that is
-// not encrypted.
-type MessageContentRaw MessageContent
+// Process handles a Message by identifying which secondary process function
+// should be handling it
+func (msg Message) Process() {
+	switch msg.Type {
+	case MessageTypeCommand:
 
-// The MessageContentEncrypted type enforces the handling of MessageContent
-// that has been encrypted.
-type MessageContentEncrypted MessageContent
-
-type messagewrapper interface {
-	wrap(crypto.PublicKey) MessageContentEncrypted
-	unwrap(crypto.PrivateKey) MessageContentRaw
+	}
 }
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** ProcessCommand *******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+// MessageCommandRequest contains the necessary parameters needed by an Agent
+// node to run a command.
+type MessageCommandRequest struct {
+	Command string `json:"cmd"`
+}
+
+// MessageCommandResponse contains information related to the finalized
+// response of a command having finished running. It may contain text output,
+// but such outptu does not necessarily reflect the entirety of the commands
+// output.
+type MessageCommandResponse struct {
+	ExitStatus int `json:"exit-status"`
+}
+
+// ProcessCommandRequest is run by an Agent Node in order to handle the values
+// passed by MessageCommandRequest.
+func (msg Message) ProcessCommandRequest() {
+
+}
+
+// ProcessCommandResponse is run by a Terminal Node in order to handle the
+// output and/or exit status from a completed command.
+func (msg Message) ProcessCommandResponse() {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************* ProcessError ********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+// MessageError holds values related to any error messages returned by an
+// Agent Node. Termainal Nodes *should not* send error messages to Agent Nodes.
+type MessageError struct {
+}
+
+// ProcessErrorResponse is run by a Terminal Node in order to handle any error
+// messages.
+func (msg Message) ProcessErrorResponse() {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/***************************** ProcessKillSwitch *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageKillSwitch struct {
+}
+
+func (msg Message) ProcessKillSwitchRequest() {
+
+}
+
+func (msg Message) ProcessKillSwitchResponse() {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************* ProcessSync *********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageSync struct {
+}
+
+func (msg Message) ProcessSyncRequest() {
+}
+
+func (msg Message) ProcessSyncResponse() {
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/**************************** ProcessFileUpload ******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageFileUpload struct {
+}
+
+func (msg Message) ProcessFileUploadRequest() {
+
+}
+
+func (msg Message) ProcessFileUploadREsponse() {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/*************************** ProcessFileDownload *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageFileDownload struct {
+}
+
+func (msg Message) ProcessFileDownloadRequest() {
+
+}
+
+func (msg Message) ProcessFileDownloadResponse() {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** ProcessStream ********************************/
+///////////////////////////////////////////////////////////////////////////////
