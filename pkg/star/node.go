@@ -6,11 +6,12 @@ import (
 
 // The Node type serves as the overarching data structure for tracking STAR nodes.
 type Node struct {
-	ID         NodeID           `json:"id"`
-	Type       NodeType         `json:"type"`
-	Neighbors  []NodeID         `json:"neighbors"`
-	PublicKey  crypto.PublicKey `json:"publickey"`
-	PrivateKey crypto.PrivateKey
+	ID             NodeID           `json:"id"`
+	Type           NodeType         `json:"type"`
+	Neighbors      []NodeID         `json:"neighbors"`
+	PublicKey      crypto.PublicKey `json:"publickey"`
+	PrivateKey     crypto.PrivateKey
+	MessageTracker MessageTracker
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -47,10 +48,18 @@ type NodeType byte
 
 const (
 	// NodeTypeTerminal identifies the STAR Node as being a Terminal Node
-	NodeTypeTerminal NodeType = iota + 1
+	NodeTypeTerminal NodeType = 0x01
 
 	// NodeTypeAgent identifies the STAR Node as being an Agent Node
-	NodeTypeAgent
+	NodeTypeAgent NodeType = 0x02
+
+	// NodeTypeRunScript is a psudeotype that is used to identify the commands
+	// which are provided as part of a run script
+	NodeTypeRunScript NodeType = 0x04
+
+	// NodeTypeShell is a psuedonode that is used when connections from
+	// external shells (i.e., netcat) are detected in an listener
+	NodeTypeShell NodeType = 0x08
 )
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -17,7 +17,7 @@ rm -r ./bin
 # Build agents for all targets
 FAILURES=""
 
-echo "Building agents..."
+echo "Building all agents..."
 
 while IFS= read -r target; do
     GOOS=${target%/*}
@@ -31,12 +31,12 @@ while IFS= read -r target; do
 done <<< "$(go tool dist list)"
 
 # Build terminal locally
-echo "Building local terminal..."
+echo "Building local terminals..."
 
-go build -ldflags "-s -w" -o ./bin/star-terminal ./terminal.go
+go build -ldflags "-s -w" -o ./bin/star_terminal_basic ./terminal.go
 
 # Build terminals for all targets
-echo "Building terminals..."
+echo "Building all terminals..."
 
 while IFS= read -r target; do
     GOOS=${target%/*}

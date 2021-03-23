@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"unsafe"
 
 	"github.com/CyberSecurityN00b/star/pkg/star"
 )
@@ -17,7 +16,4 @@ func main() {
 	fmt.Println("MessageID:", msg.ID)
 
 	fmt.Println(msg)
-	//fmt.Println(msg.Meta.RequestSent)
-
-	fmt.Println(unsafe.Sizeof(msg))
 }

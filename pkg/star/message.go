@@ -1,15 +1,26 @@
 package star
 
-import "time"
+import (
+	"encoding/json"
+	"sync"
+	"time"
+)
 
 // The Message type serves as the overarching data structure for STAR messages.
 type Message struct {
-	ID          MessageID   `json:"id"`
-	Destination NodeID      `json:"destination"`
-	Meta        MessageMeta `json:"meta"`
-	Type        MessageType `json:"type"`
-	Request     MessageData `json:"request-data"`
-	Response    MessageData `json:"response-data"`
+	ID           MessageID   `json:"id"`
+	Destination  NodeID      `json:"destination"`
+	Meta         MessageMeta `json:"meta"`
+	Type         MessageType `json:"type"`
+	RequestData  []byte      `json:"request-data"`
+	ResponseData []byte      `json:"response-data"`
+}
+
+// MessageTracker is used by STAR Nodes to track what Messages have been
+// handled, whether processed locally or passed on to adjacent Nodes
+type MessageTracker struct {
+	IDs   []MessageID
+	Mutex *sync.Mutex
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -122,9 +133,6 @@ const (
 /******************************* MessageData *********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-// The MessageData type is a placeholder for message specific data structs
-type MessageData []byte
-
 // Process handles a Message by identifying which secondary process function
 // should be handling it
 func (msg Message) Process() {
@@ -150,6 +158,19 @@ type MessageCommandRequest struct {
 // output.
 type MessageCommandResponse struct {
 	ExitStatus int `json:"exit-status"`
+}
+
+// NewMessageCommand creates a new Message of type MessageTypeCommand
+func NewMessageCommand(cmd string) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeCommand
+
+	d := new(MessageCommandRequest)
+	j, _ := json.Marshal(d)
+
+	msg.RequestData = j
+
+	return
 }
 
 // ProcessCommandRequest is run by an Agent Node in order to handle the values
@@ -240,3 +261,39 @@ func (msg Message) ProcessFileDownloadResponse() {
 ///////////////////////////////////////////////////////////////////////////////
 /****************************** ProcessStream ********************************/
 ///////////////////////////////////////////////////////////////////////////////
+
+type MessageProcessStream struct {
+}
+
+func (msg Message) ProcessStreamRequest() {
+
+}
+
+func (msg Message) ProcessStreamResponse() {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/*************************** MessagesTrackerRemove ***************************/
+///////////////////////////////////////////////////////////////////////////////
+
+// MessageTrackerTrack tracks a MessageID in the MessagesTracker for a
+// specified duration of time. Durations should be specific to each type of
+// connection (i.e., a slower connection using a mailing platform may have a
+// longer duration than a network based connection).
+func MessageTrackerRemove(id MessageID, tracker *MessageTracker, d time.Duration) {
+	// Lock to make sure nothing else is accessing the tracker
+	tracker.Mutex.Lock()
+	defer tracker.Mutex.Unlock()
+
+	// Add the MessageID to the tracker
+	tracker.IDs = append(tracker.IDs, id)
+
+	time.AfterFunc(d, func() {
+		// Lock to make sure only one goroutine can access at a time
+		tracker.Mutex.Lock()
+		defer tracker.Mutex.Unlock()
+
+		// TODO: Remove ID from the tracker
+	})
+}
