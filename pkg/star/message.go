@@ -2,26 +2,20 @@ package star
 
 import (
 	"encoding/json"
-	"sync"
 	"time"
 )
 
 // The Message type serves as the overarching data structure for STAR messages.
 type Message struct {
 	ID           MessageID   `json:"id"`
+	Source       NodeID      `json:"source"`
 	Destination  NodeID      `json:"destination"`
-	Meta         MessageMeta `json:"meta"`
 	Type         MessageType `json:"type"`
 	RequestData  []byte      `json:"request-data"`
 	ResponseData []byte      `json:"response-data"`
 }
 
-// MessageTracker is used by STAR Nodes to track what Messages have been
-// handled, whether processed locally or passed on to adjacent Nodes
-type MessageTracker struct {
-	IDs   []MessageID
-	Mutex *sync.Mutex
-}
+var messageTracker map[MessageID]bool
 
 ///////////////////////////////////////////////////////////////////////////////
 /******************************** NewMessage *********************************/
@@ -47,21 +41,6 @@ func (id MessageID) String() string {
 }
 
 //////////////////////////////////////////////////////////////////////////////
-/******************************* MessageMeta ********************************/
-//////////////////////////////////////////////////////////////////////////////
-
-// The MessageMeta type tracks metadata of STAR communications, largely for
-// timestamp and tracking purposes, which are not relevant to the communication
-type MessageMeta struct {
-	RequestSent       time.Time `json:"request-sent"`
-	RequestReceived   time.Time `json:"request-received"`
-	ProcessingStarted time.Time `json:"processing-started"`
-	ProcessingStopped time.Time `json:"processing-stopped"`
-	ResponseSent      time.Time `json:"response-sent"`
-	ResponseReceived  time.Time `json:"response-received"`
-}
-
-//////////////////////////////////////////////////////////////////////////////
 /******************************* MessageType ********************************/
 //////////////////////////////////////////////////////////////////////////////
 
@@ -76,7 +55,7 @@ const (
 	// REQUESTS = N/A
 	//
 	// RESPONDS = Agent
-	MessageTypeError MessageType = 0x01
+	MessageTypeError MessageType = iota + 1
 
 	// MessageTypeSync identifies the Message as being a synchronization
 	// request from the Terminal to Agents. The Message will be forwarded to
@@ -85,7 +64,7 @@ const (
 	// REQUESTS = Terminal
 	//
 	// RESPONDS = Agent
-	MessageTypeSync MessageType = 0x02
+	MessageTypeSync
 
 	// MessageTypeKillSwitch identifies the Message as being a self-destruct
 	// request from the Terminal to Agents. The Message will *only* be
@@ -94,7 +73,7 @@ const (
 	// REQUESTS = Terminal
 	//
 	// RESPONDS = N/A
-	MessageTypeKillSwitch MessageType = 0x04
+	MessageTypeKillSwitch
 
 	// MessageTypeCommand identifies the Message as being related to the
 	// execution or results of a command.
@@ -102,7 +81,7 @@ const (
 	// REQUESTS = Terminal
 	//
 	// RESPONDS = Agent
-	MessageTypeCommand MessageType = 0x08
+	MessageTypeCommand
 
 	// MessageTypeFileUpload identifies the Message as being related to the
 	// transfer of a file from a Terminal to an Agent.
@@ -110,7 +89,7 @@ const (
 	// REQUESTS = Terminal
 	//
 	// RESPONDS = Agent
-	MessageTypeFileUpload MessageType = 0x16
+	MessageTypeFileUpload
 
 	// MessageTypeFileDownload identifies the Message as being related to the
 	// transfer of a file from an Agent to a Terminal.
@@ -118,7 +97,7 @@ const (
 	// REQUESTS = Terminal
 	//
 	// RESPONDS = Agent
-	MessageTypeFileDownload MessageType = 0x32
+	MessageTypeFileDownload
 
 	// MessageTypeStream identifies the Message as being related to
 	// bi-directional interactive traffic (i.e., a command prompt)
@@ -126,24 +105,34 @@ const (
 	// REQUESTS = Agent (Provides output, seeks input)
 	//
 	// RESPONDS = Terminal (Provides input)
-	MessageTypeStream MessageType = 0x64
+	MessageTypeStream
+
+	// MessageTypeBind indentifies the Message as being related to
+	// the creation of a Listener on an agent
+	//
+	// REQUESTS = Terminal
+	//
+	// RESPONDS = Agent
+	MessageTypeBind
+
+	// MessageTypeConnect identifies the Message as being related to
+	// the creation of a Connection on an agent
+	//
+	// REQUESTS = Terminal
+	//
+	// RESPONDS = Agent
+	MessageTypeConnect
 )
 
-///////////////////////////////////////////////////////////////////////////////
-/******************************* MessageData *********************************/
-///////////////////////////////////////////////////////////////////////////////
-
-// Process handles a Message by identifying which secondary process function
-// should be handling it
 func (msg Message) Process() {
-	switch msg.Type {
-	case MessageTypeCommand:
-
+	if msg.Type == MessageTypeStream {
+		msg.HandleStream()
 	}
+	ThisNode.MessageProcesser(&msg)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/****************************** ProcessCommand *******************************/
+/****************************** MessageCommand *******************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 // MessageCommandRequest contains the necessary parameters needed by an Agent
@@ -173,127 +162,147 @@ func NewMessageCommand(cmd string) (msg Message) {
 	return
 }
 
-// ProcessCommandRequest is run by an Agent Node in order to handle the values
-// passed by MessageCommandRequest.
-func (msg Message) ProcessCommandRequest() {
-
-}
-
-// ProcessCommandResponse is run by a Terminal Node in order to handle the
-// output and/or exit status from a completed command.
-func (msg Message) ProcessCommandResponse() {
-
-}
-
 ///////////////////////////////////////////////////////////////////////////////
-/******************************* ProcessError ********************************/
+/******************************* MessageError ********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 // MessageError holds values related to any error messages returned by an
 // Agent Node. Termainal Nodes *should not* send error messages to Agent Nodes.
-type MessageError struct {
-}
-
-// ProcessErrorResponse is run by a Terminal Node in order to handle any error
-// messages.
-func (msg Message) ProcessErrorResponse() {
-
+type MessageErrorResponse struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/***************************** ProcessKillSwitch *****************************/
+/***************************** MessageKillSwitch *****************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageKillSwitch struct {
-}
-
-func (msg Message) ProcessKillSwitchRequest() {
-
-}
-
-func (msg Message) ProcessKillSwitchResponse() {
-
+type MessageKillSwitchRequest struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/******************************* ProcessSync *********************************/
+/******************************* MessageSync *********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageSync struct {
-}
-
-func (msg Message) ProcessSyncRequest() {
-}
-
-func (msg Message) ProcessSyncResponse() {
+type MessageSyncResponse struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/**************************** ProcessFileUpload ******************************/
+/**************************** MessageFileUpload ******************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageFileUpload struct {
+type MessageFileUploadRequest struct {
 }
 
-func (msg Message) ProcessFileUploadRequest() {
-
-}
-
-func (msg Message) ProcessFileUploadREsponse() {
-
+type MessageFileUploadResponse struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/*************************** ProcessFileDownload *****************************/
+/*************************** MessageFileDownload *****************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageFileDownload struct {
+type MessageFileDownloadRequest struct {
 }
 
-func (msg Message) ProcessFileDownloadRequest() {
-
-}
-
-func (msg Message) ProcessFileDownloadResponse() {
-
+type MessageFileDownloadResponse struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/****************************** ProcessStream ********************************/
+/******************************* MessageBind *********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageProcessStream struct {
+type MessageBindRequest struct {
+	Type ConnectorType `json:"type"`
+	Data []byte        `json:"data"`
 }
 
-func (msg Message) ProcessStreamRequest() {
-
-}
-
-func (msg Message) ProcessStreamResponse() {
-
+type MessageBindResponse struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/*************************** MessagesTrackerRemove ***************************/
+/****************************** MessageConnect *******************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-// MessageTrackerTrack tracks a MessageID in the MessagesTracker for a
+type MessageConnectRequest struct {
+}
+
+type MessageConnectResponse struct {
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** Message Tracker ******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+// TrackMessage tracks a MessageID in the MessagesTracker for a
 // specified duration of time. Durations should be specific to each type of
 // connection (i.e., a slower connection using a mailing platform may have a
 // longer duration than a network based connection).
-func MessageTrackerRemove(id MessageID, tracker *MessageTracker, d time.Duration) {
-	// Lock to make sure nothing else is accessing the tracker
-	tracker.Mutex.Lock()
-	defer tracker.Mutex.Unlock()
-
+func TrackMessage(id MessageID, d time.Duration) {
 	// Add the MessageID to the tracker
-	tracker.IDs = append(tracker.IDs, id)
+	messageTracker[id] = true
 
 	time.AfterFunc(d, func() {
-		// Lock to make sure only one goroutine can access at a time
-		tracker.Mutex.Lock()
-		defer tracker.Mutex.Unlock()
-
-		// TODO: Remove ID from the tracker
+		delete(messageTracker, id)
 	})
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/***************************** Encrypt / Decrypt *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+func (msg Message) Encrypt() {
+	// If already encrypted, do nothing
+
+	//TODO: Encrypt message
+}
+
+func (msg Message) Decrypt() {
+	// If already decrypted, do nothing
+	//TODO: Decrypt message
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/************************************ Send ***********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+func (msg Message) Send(src ConnectID) {
+	msg.Encrypt()
+	dst, exists := destinationTracker[msg.Destination]
+
+	if msg.Destination.IsBroadcastNodeID() || !exists {
+		for conn := range connectionTracker {
+			if conn != src {
+				go connectionTracker[conn].Send(msg)
+			}
+		}
+	} else {
+		go connectionTracker[dst].Send(msg)
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/*********************************** Handle **********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+func (msg Message) Handle(src ConnectID) {
+	// If part of a stream, offload to the functions in stream.go
+	if msg.Type == MessageTypeStream {
+		msg.HandleStream()
+		return
+	}
+
+	// Have we already received this Message before?
+	if messageTracker[msg.ID] {
+		return
+	}
+	TrackMessage(msg.ID, connectionTracker[src].MessageDuration())
+
+	// Is the MessageType supposed to be broadcasted or sent to an individual?
+	if msg.Destination.IsBroadcastNodeID() {
+		// Pass it along first and then process
+		msg.Send(src)
+		msg.Process()
+	} else if msg.Destination == ThisNode.ID {
+		msg.Process()
+	} else {
+		msg.Send(src)
+	}
 }

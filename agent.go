@@ -1,19 +1,26 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/CyberSecurityN00b/star/pkg/star"
 )
 
 func main() {
-	msg := star.NewMessage()
-	node := star.NewNode(star.NodeTypeAgent)
+	star.ThisNode = star.NewNode(star.NodeTypeAgent)
+	star.ThisNode.MessageProcesser = AgentProcessMessage
+}
 
-	msg.Destination = node.ID
+///////////////////////////////////////////////////////////////////////////////
 
-	fmt.Println("NodeID:", node.ID)
-	fmt.Println("MessageID:", msg.ID)
-
-	fmt.Println(msg)
+func AgentProcessMessage(msg *star.Message) {
+	msg.Decrypt()
+	switch msg.Type {
+	case star.MessageTypeBind:
+	case star.MessageTypeCommand:
+	case star.MessageTypeConnect:
+	case star.MessageTypeError:
+	case star.MessageTypeFileDownload:
+	case star.MessageTypeFileUpload:
+	case star.MessageTypeKillSwitch:
+	case star.MessageTypeSync:
+	}
 }

@@ -1,23 +1,39 @@
 package main
 
 import (
-	"fmt"
-	"unsafe"
+	"compress/gzip"
+	"encoding/json"
+	"os"
 
 	"github.com/CyberSecurityN00b/star/pkg/star"
 )
 
+type A struct {
+	ID star.NodeID `json:"id"`
+	B  B           `json:"b"`
+}
+
+type B struct {
+	ID star.MessageID `json:"id`
+}
+
 func main() {
-	msg := star.NewMessage()
-	node := star.NewNode(star.NodeTypeAgent)
+	var id1 star.NodeID
+	var id2 star.MessageID
 
-	msg.Destination = node.ID
+	star.NewUID(id1[:])
+	star.NewUID(id2[:])
 
-	fmt.Println("NodeID:", node.ID)
-	fmt.Println("MessageID:", msg.ID)
+	t := new(A)
+	t.ID = id1
+	t.B.ID = id2
 
-	fmt.Println(msg)
-	//fmt.Println(msg.Meta.RequestSent)
+	x := json.NewEncoder(os.Stdout)
+	x.Encode(t)
 
-	fmt.Println(unsafe.Sizeof(msg))
+	z := gzip.NewWriter(os.Stdout)
+	z.
+	y := json.NewEncoder(z)
+	y.Encode(t)
+	z.Close()
 }
