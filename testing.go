@@ -1,12 +1,15 @@
 package main
 
 import (
-	"compress/gzip"
-	"encoding/json"
-	"os"
+	"bufio"
+	"embed"
+	"fmt"
 
 	"github.com/CyberSecurityN00b/star/pkg/star"
 )
+
+//go:embed connection.crt
+var fs embed.FS
 
 type A struct {
 	ID star.NodeID `json:"id"`
@@ -27,13 +30,25 @@ func main() {
 	t := new(A)
 	t.ID = id1
 	t.B.ID = id2
+	/*
+		l, _ := net.Listen("tcp", ":12345")
+		c, _ := l.Accept()
 
-	x := json.NewEncoder(os.Stdout)
-	x.Encode(t)
+		z := gzip.NewWriter(c)
+		//j := json.NewEncoder(z)
+		g := gob.NewEncoder(z)
+		g.Encode(t)
+		z.Close()
+	*/
 
-	z := gzip.NewWriter(os.Stdout)
-	z.
-	y := json.NewEncoder(z)
-	y.Encode(t)
-	z.Close()
+	data, _ := fs.ReadFile("message.cert")
+	fmt.Println(string(data))
+	/*
+		data, _ = fs.ReadFile("embed/terminal.key")
+		fmt.Println(string(data))*/
+	in := bufio.NewReadWriter()
+	fmt.Println("Waiting for input:")
+
+	input, _ := in.ReadString('\n')
+	fmt.Println(input)
 }

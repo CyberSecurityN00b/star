@@ -1,7 +1,9 @@
 package star
 
 import (
+	"bytes"
 	"crypto/rand"
+	"encoding/gob"
 	"encoding/hex"
 	"math"
 	"strings"
@@ -10,7 +12,6 @@ import (
 // NewUID fills a byte array with random data
 func NewUID(id []byte) {
 	rand.Read(id[:])
-	return
 }
 
 // SqrtedString turns a []byte into a hexadecimal string that is split into
@@ -24,4 +25,28 @@ func SqrtedString(b []byte, sep string) string {
 		parts = append(parts, strings.ToUpper(hex.EncodeToString(b[i*n:i*n+n])))
 	}
 	return strings.Join(parts, sep)
+}
+
+func GobEncode(d interface{}) []byte {
+	var b bytes.Buffer
+	gob.NewEncoder(&b).Encode(d)
+	return b.Bytes()
+}
+
+func StringifySubarray(arr []string, starti int, endi int) (s string) {
+	s = arr[starti]
+	if len(arr) > endi {
+		endi = len(arr)
+	}
+	for i := starti + 1; i < endi; i++ {
+		s = s + " " + arr[i]
+	}
+	return s
+}
+
+func STARCoreSetup() {
+	connectionTracker = make(map[ConnectID]Connection)
+	listenerTracker = make(map[ConnectID]Connector)
+	destinationTracker = make(map[NodeID]ConnectID)
+	gob.Register(Message{})
 }

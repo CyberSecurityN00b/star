@@ -1,18 +1,17 @@
 package star
 
 import (
-	"encoding/json"
+	"fmt"
 	"time"
 )
 
 // The Message type serves as the overarching data structure for STAR messages.
 type Message struct {
-	ID           MessageID   `json:"id"`
-	Source       NodeID      `json:"source"`
-	Destination  NodeID      `json:"destination"`
-	Type         MessageType `json:"type"`
-	RequestData  []byte      `json:"request-data"`
-	ResponseData []byte      `json:"response-data"`
+	ID          MessageID
+	Source      NodeID
+	Destination NodeID
+	Type        MessageType
+	Data        []byte
 }
 
 var messageTracker map[MessageID]bool
@@ -51,77 +50,70 @@ const (
 	// MessageTypeError identifies the Message as being in relation to an
 	// error that occurred on the Agent and is being relayed to the Terminal
 	// user.
-	//
-	// REQUESTS = N/A
-	//
-	// RESPONDS = Agent
 	MessageTypeError MessageType = iota + 1
 
-	// MessageTypeSync identifies the Message as being a synchronization
+	// MessageTypeSyncRequest identifies the Message as being a synchronization
 	// request from the Terminal to Agents. The Message will be forwarded to
 	// all neighboring Agents.
-	//
-	// REQUESTS = Terminal
-	//
-	// RESPONDS = Agent
-	MessageTypeSync
+	MessageTypeSyncRequest
+
+	// MessageTypeSyncResponse identifies the Message as being a
+	// synchronization response from Agents to the Terminal. The Message
+	// will be forwarded to all neighboring Agents.
+	MessageTypeSyncResponse
 
 	// MessageTypeKillSwitch identifies the Message as being a self-destruct
 	// request from the Terminal to Agents. The Message will *only* be
 	// forwarded if the correct confirmation code is passed.
-	//
-	// REQUESTS = Terminal
-	//
-	// RESPONDS = N/A
 	MessageTypeKillSwitch
 
-	// MessageTypeCommand identifies the Message as being related to the
-	// execution or results of a command.
-	//
-	// REQUESTS = Terminal
-	//
-	// RESPONDS = Agent
-	MessageTypeCommand
+	// MessageTypeCommandRequest identifies the Message as being related to the
+	// execution of a command.
+	MessageTypeCommandRequest
+
+	// MessageTypeCommandResponse identifies the Message as being related to the
+	// response of a command.
+	MessageTypeCommandResponse
 
 	// MessageTypeFileUpload identifies the Message as being related to the
 	// transfer of a file from a Terminal to an Agent.
-	//
-	// REQUESTS = Terminal
-	//
-	// RESPONDS = Agent
 	MessageTypeFileUpload
 
 	// MessageTypeFileDownload identifies the Message as being related to the
 	// transfer of a file from an Agent to a Terminal.
-	//
-	// REQUESTS = Terminal
-	//
-	// RESPONDS = Agent
 	MessageTypeFileDownload
 
 	// MessageTypeStream identifies the Message as being related to
 	// bi-directional interactive traffic (i.e., a command prompt)
-	//
-	// REQUESTS = Agent (Provides output, seeks input)
-	//
-	// RESPONDS = Terminal (Provides input)
 	MessageTypeStream
 
 	// MessageTypeBind indentifies the Message as being related to
 	// the creation of a Listener on an agent
-	//
-	// REQUESTS = Terminal
-	//
-	// RESPONDS = Agent
 	MessageTypeBind
 
 	// MessageTypeConnect identifies the Message as being related to
 	// the creation of a Connection on an agent
-	//
-	// REQUESTS = Terminal
-	//
-	// RESPONDS = Agent
 	MessageTypeConnect
+
+	// MessageTypeHello identifies the Message as being related to a
+	// new node joining the constellation
+	MessageTypeHello
+
+	// MessageTypeNewBind identifies the message as being related to
+	// the successful creation of a new listener. This is separate
+	// from the MessageTypeBind Response in that this is sent to the
+	// broadcast NodeID, so all terminals will be aware.
+	MessageTypeNewBind
+
+	// MessageTypeNewConnection identifies the message as being related to
+	// the successful creation of a new connection. This is separate from the
+	// MessageTypeConnection Response in that this is sent to the broadcast
+	// NodeID, so all terminals will be aware.
+	MessageTypeNewConnection
+
+	// MessageTypeTerminateAgent identifies the message as being related to
+	// the termination request of an agent.
+	MessageTypeTerminateAgent
 )
 
 func (msg Message) Process() {
@@ -138,7 +130,7 @@ func (msg Message) Process() {
 // MessageCommandRequest contains the necessary parameters needed by an Agent
 // node to run a command.
 type MessageCommandRequest struct {
-	Command string `json:"cmd"`
+	Command string
 }
 
 // MessageCommandResponse contains information related to the finalized
@@ -146,18 +138,23 @@ type MessageCommandRequest struct {
 // but such outptu does not necessarily reflect the entirety of the commands
 // output.
 type MessageCommandResponse struct {
-	ExitStatus int `json:"exit-status"`
+	ExitStatus int
 }
 
-// NewMessageCommand creates a new Message of type MessageTypeCommand
+// NewMessageCommand creates a new Message of type MessageTypeCommandRequest
 func NewMessageCommand(cmd string) (msg Message) {
 	msg = NewMessage()
-	msg.Type = MessageTypeCommand
+	msg.Type = MessageTypeCommandRequest
+	msg.Data = GobEncode(MessageCommandRequest{Command: cmd})
 
-	d := new(MessageCommandRequest)
-	j, _ := json.Marshal(d)
+	return
+}
 
-	msg.RequestData = j
+// NewMessageCommandResponse creates a new Message for Command Response
+func NewMessageCommandResponse(status int) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeCommandResponse
+	msg.Data = GobEncode(MessageCommandResponse{ExitStatus: status})
 
 	return
 }
@@ -169,6 +166,26 @@ func NewMessageCommand(cmd string) (msg Message) {
 // MessageError holds values related to any error messages returned by an
 // Agent Node. Termainal Nodes *should not* send error messages to Agent Nodes.
 type MessageErrorResponse struct {
+	Type    MessageErrorResponseType
+	Context string
+}
+
+type MessageErrorResponseType byte
+
+const (
+	MessageErrorResponseTypeX509KeyPair MessageErrorResponseType = iota + 1
+	MessageErrorResponseTypeConnectionLost
+	MessageErrorResponseTypeBindDropped
+	MessageErrorResponseTypeGobDecodeError
+	MessageErrorResponseTypeAgentExitSignal
+)
+
+func NewMessageError(errorType MessageErrorResponseType, context string) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeError
+	msg.Data = GobEncode(MessageErrorResponse{Type: errorType, Context: context})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -178,31 +195,71 @@ type MessageErrorResponse struct {
 type MessageKillSwitchRequest struct {
 }
 
+func NewMessageKillSwitch() (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeKillSwitch
+	msg.Data = GobEncode(MessageKillSwitchRequest{})
+
+	return
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /******************************* MessageSync *********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
+type MessageSyncRequest struct {
+}
+
 type MessageSyncResponse struct {
+	Node Node
+	Info NodeInfo
+}
+
+func NewMessageSyncRequest() (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeSyncRequest
+	msg.Data = GobEncode(MessageSyncRequest{})
+
+	return
+}
+
+func NewMessageSyncResponse() (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeSyncResponse
+	ThisNodeInfo.Update()
+	msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: ThisNodeInfo})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /**************************** MessageFileUpload ******************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageFileUploadRequest struct {
+type MessageFileUpload struct {
 }
 
-type MessageFileUploadResponse struct {
+func NewMessageFileUpload() (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileUpload
+	msg.Data = GobEncode(MessageFileUpload{})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /*************************** MessageFileDownload *****************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageFileDownloadRequest struct {
+type MessageFileDownload struct {
 }
 
-type MessageFileDownloadResponse struct {
+func NewMessageFileDownload() (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileDownload
+	msg.Data = GobEncode(MessageFileDownload{})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -210,11 +267,16 @@ type MessageFileDownloadResponse struct {
 ///////////////////////////////////////////////////////////////////////////////
 
 type MessageBindRequest struct {
-	Type ConnectorType `json:"type"`
-	Data []byte        `json:"data"`
+	Type ConnectorType
+	Data []byte
 }
 
-type MessageBindResponse struct {
+func NewMessageBind(t ConnectorType, data []byte) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeBind
+	msg.Data = GobEncode(MessageBindRequest{Type: t, Data: data})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -222,9 +284,77 @@ type MessageBindResponse struct {
 ///////////////////////////////////////////////////////////////////////////////
 
 type MessageConnectRequest struct {
+	Type ConnectorType
+	Data []byte
 }
 
-type MessageConnectResponse struct {
+func NewMessageConnect(t ConnectorType, data []byte) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeConnect
+	msg.Data = GobEncode(MessageConnectRequest{Type: t, Data: data})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************* MessageHello ********************************/
+///////////////////////////////////////////////////////////////////////////////
+type MessageHelloResponse struct {
+	Node Node
+	Info NodeInfo
+}
+
+func NewMessageHello() (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeHello
+	msg.Data = GobEncode(MessageHelloResponse{Node: ThisNode, Info: ThisNodeInfo})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** MessageNewBind *******************************/
+///////////////////////////////////////////////////////////////////////////////
+type MessageNewBindResponse struct {
+	Address string
+}
+
+func NewMessageNewBind(address string) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeNewBind
+	msg.Data = GobEncode(MessageNewBindResponse{Address: address})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/*************************** MessageNewConnection ****************************/
+///////////////////////////////////////////////////////////////////////////////
+type MessageNewConnectionResponse struct {
+	Address string
+}
+
+func NewMessageNewConnection(address string) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeNewConnection
+	msg.Data = GobEncode(MessageNewConnectionResponse{Address: address})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/*************************** MessageTerminateAgent ***************************/
+///////////////////////////////////////////////////////////////////////////////
+type MessageTerminateAgentRequest struct {
+	Cleanup bool
+}
+
+func NewMessageTerminateAgent(cleanup bool) (msg Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeTerminateAgent
+	msg.Data = GobEncode(MessageTerminateAgentRequest{Cleanup: cleanup})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -245,26 +375,10 @@ func TrackMessage(id MessageID, d time.Duration) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/***************************** Encrypt / Decrypt *****************************/
-///////////////////////////////////////////////////////////////////////////////
-
-func (msg Message) Encrypt() {
-	// If already encrypted, do nothing
-
-	//TODO: Encrypt message
-}
-
-func (msg Message) Decrypt() {
-	// If already decrypted, do nothing
-	//TODO: Decrypt message
-}
-
-///////////////////////////////////////////////////////////////////////////////
 /************************************ Send ***********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 func (msg Message) Send(src ConnectID) {
-	msg.Encrypt()
 	dst, exists := destinationTracker[msg.Destination]
 
 	if msg.Destination.IsBroadcastNodeID() || !exists {
@@ -283,6 +397,9 @@ func (msg Message) Send(src ConnectID) {
 ///////////////////////////////////////////////////////////////////////////////
 
 func (msg Message) Handle(src ConnectID) {
+	//DEBUG
+	fmt.Printf("DEBUG: Connection %s with %b messageType\n", src, msg.Type)
+
 	// If part of a stream, offload to the functions in stream.go
 	if msg.Type == MessageTypeStream {
 		msg.HandleStream()

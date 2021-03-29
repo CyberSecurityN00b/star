@@ -9,10 +9,19 @@ contains() {
     [[ $1 =~ (^|[[:space:]])$2($|[[:space:]]) ]]
 }
 
-# Todo: Setup pre-build files (to be embedded)
+# Setup pre-build files (to be embedded)
+# - Note: These will be deleted after this script is run
+openssl ecparam -genkey -name secp384r1 -out connection.key
+openssl req -new -x509 -sha256 -key connection.key -out connection.crt -days 30 -nodes -subj "/C=US"
 
 # Delete existing binaries
 rm -r ./bin
+
+# Post-build function
+post_build () {
+    echo "--- Performing post-build actions on $1"
+    upx -9 $1
+}
 
 # Build agents for all targets
 FAILURES=""
@@ -25,15 +34,17 @@ while IFS= read -r target; do
     BIN_FILENAME="./bin/agents/star-agent-${GOOS}-${GOARCH}"
     if [[ "${GOOS}" == "windows" ]]; then BIN_FILENAME="${BIN_FILENAME}.exe"; fi
     CMD="GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags \"-s -w\" -o ${BIN_FILENAME} ./agent.go"
-    echo "${CMD}"
+    echo "--- Building ${BIN_FILENAME}"
     eval "${CMD}" || FAILURES="${FAILURES} agent:${GOOS}/${GOARCH}"
-    upx -9 ${BIN_FILENAME}
+    post_build "${BIN_FILENAME}"
+    echo ""
 done <<< "$(go tool dist list)"
 
 # Build terminal locally
 echo "Building local terminals..."
 
-go build -ldflags "-s -w" -o ./bin/star_terminal_basic ./terminal.go
+go build -ldflags "-s -w" -o ./bin/star_terminal ./terminal.go
+post_build "./bin/star_terminal" 
 
 # Build terminals for all targets
 echo "Building all terminals..."
@@ -44,13 +55,19 @@ while IFS= read -r target; do
     BIN_FILENAME="./bin/terminals/star-terminal-${GOOS}-${GOARCH}"
     if [[ "${GOOS}" == "windows" ]]; then BIN_FILENAME="${BIN_FILENAME}.exe"; fi
     CMD="GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags \"-s -w\" -o ${BIN_FILENAME} ./terminal.go"
-    echo "${CMD}"
+    echo "--- Building ${BIN_FILENAME}"
     eval "${CMD}" || FAILURES="${FAILURES} terminal:${GOOS}/${GOARCH}"
-    upx -9 ${BIN_FILENAME}
+    post_build "${BIN_FILENAME}"
+    echo ""
 done <<< "$(go tool dist list)"
+
+# Cleanup pre-build files
+#rm -f connection.crt
+#rm -f connection.key
 
 if [[ "${FAILURES}" != "" ]]; then
     echo ""
     echo "STAR build failed on: ${FAILURES}"
     exit 1
 fi
+

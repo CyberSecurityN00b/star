@@ -1,6 +1,7 @@
 package star
 
 import (
+	"crypto/tls"
 	"time"
 )
 
@@ -21,6 +22,8 @@ type Connector interface {
 var connectionTracker map[ConnectID]Connection
 var listenerTracker map[ConnectID]Connector
 var destinationTracker map[NodeID]ConnectID
+var ConnectionCert tls.Certificate
+var ConnectionConfig *tls.Config
 
 ///////////////////////////////////////////////////////////////////////////////
 /******************************* Connection ID *******************************/
@@ -28,7 +31,7 @@ var destinationTracker map[NodeID]ConnectID
 
 // The ConnectID type is a fixed-length byte array which should serve as a
 // UUID for each Connection
-type ConnectID [36]byte
+type ConnectID [9]byte
 
 func NewConnectID() (id ConnectID) {
 	NewUID([]byte(id[:]))
@@ -37,7 +40,7 @@ func NewConnectID() (id ConnectID) {
 
 // Formats a ConnectID into a print-friendly string
 func (id ConnectID) String() string {
-	return SqrtedString(id[:], "@")
+	return SqrtedString(id[:], "-")
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -83,3 +86,13 @@ func RegisterListener(conn Connector) ConnectID {
 func UnregisterListener(connID ConnectID) {
 	delete(listenerTracker, connID)
 }
+
+///////////////////////////////////////////////////////////////////////////////
+
+func SetupConnectionCertificate(certPEMBlock []byte, keyPEMBlock []byte) (err error) {
+	ConnectionCert, err = tls.X509KeyPair(certPEMBlock, keyPEMBlock)
+	ConnectionConfig = &tls.Config{Certificates: []tls.Certificate{ConnectionCert}, InsecureSkipVerify: true}
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
