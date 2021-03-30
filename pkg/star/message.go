@@ -1,7 +1,7 @@
 package star
 
 import (
-	"fmt"
+	"sync"
 	"time"
 )
 
@@ -15,14 +15,17 @@ type Message struct {
 }
 
 var messageTracker map[MessageID]bool
+var messageTrackerMutex *sync.Mutex
 
 ///////////////////////////////////////////////////////////////////////////////
 /******************************** NewMessage *********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 // NewMessage creates and sets up a bare-bones STAR Message
-func NewMessage() (msg Message) {
+func NewMessage() (msg *Message) {
+	msg = &Message{}
 	NewUID([]byte(msg.ID[:]))
+	msg.Source = ThisNode.ID
 	return
 }
 
@@ -113,14 +116,11 @@ const (
 
 	// MessageTypeTerminateAgent identifies the message as being related to
 	// the termination request of an agent.
-	MessageTypeTerminateAgent
+	MessageTypeTerminate
 )
 
-func (msg Message) Process() {
-	if msg.Type == MessageTypeStream {
-		msg.HandleStream()
-	}
-	ThisNode.MessageProcesser(&msg)
+func (msg *Message) Process() {
+	ThisNode.MessageProcesser(msg)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -142,7 +142,7 @@ type MessageCommandResponse struct {
 }
 
 // NewMessageCommand creates a new Message of type MessageTypeCommandRequest
-func NewMessageCommand(cmd string) (msg Message) {
+func NewMessageCommand(cmd string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeCommandRequest
 	msg.Data = GobEncode(MessageCommandRequest{Command: cmd})
@@ -151,7 +151,7 @@ func NewMessageCommand(cmd string) (msg Message) {
 }
 
 // NewMessageCommandResponse creates a new Message for Command Response
-func NewMessageCommandResponse(status int) (msg Message) {
+func NewMessageCommandResponse(status int) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeCommandResponse
 	msg.Data = GobEncode(MessageCommandResponse{ExitStatus: status})
@@ -178,9 +178,12 @@ const (
 	MessageErrorResponseTypeBindDropped
 	MessageErrorResponseTypeGobDecodeError
 	MessageErrorResponseTypeAgentExitSignal
+	MessageErrorResponseTypeUnsupportedConnectorType
+	MessageErrorResponseTypeUnsupportedTerminationType
+	MessageErrorResponseTypeInvalidTerminationIndex
 )
 
-func NewMessageError(errorType MessageErrorResponseType, context string) (msg Message) {
+func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeError
 	msg.Data = GobEncode(MessageErrorResponse{Type: errorType, Context: context})
@@ -195,7 +198,7 @@ func NewMessageError(errorType MessageErrorResponseType, context string) (msg Me
 type MessageKillSwitchRequest struct {
 }
 
-func NewMessageKillSwitch() (msg Message) {
+func NewMessageKillSwitch() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeKillSwitch
 	msg.Data = GobEncode(MessageKillSwitchRequest{})
@@ -215,7 +218,7 @@ type MessageSyncResponse struct {
 	Info NodeInfo
 }
 
-func NewMessageSyncRequest() (msg Message) {
+func NewMessageSyncRequest() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeSyncRequest
 	msg.Data = GobEncode(MessageSyncRequest{})
@@ -223,7 +226,7 @@ func NewMessageSyncRequest() (msg Message) {
 	return
 }
 
-func NewMessageSyncResponse() (msg Message) {
+func NewMessageSyncResponse() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeSyncResponse
 	ThisNodeInfo.Update()
@@ -239,7 +242,7 @@ func NewMessageSyncResponse() (msg Message) {
 type MessageFileUpload struct {
 }
 
-func NewMessageFileUpload() (msg Message) {
+func NewMessageFileUpload() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeFileUpload
 	msg.Data = GobEncode(MessageFileUpload{})
@@ -254,7 +257,7 @@ func NewMessageFileUpload() (msg Message) {
 type MessageFileDownload struct {
 }
 
-func NewMessageFileDownload() (msg Message) {
+func NewMessageFileDownload() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeFileDownload
 	msg.Data = GobEncode(MessageFileDownload{})
@@ -271,12 +274,16 @@ type MessageBindRequest struct {
 	Data []byte
 }
 
-func NewMessageBind(t ConnectorType, data []byte) (msg Message) {
+func newMessageBind(t ConnectorType, gobEncodedData []byte) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeBind
-	msg.Data = GobEncode(MessageBindRequest{Type: t, Data: data})
+	msg.Data = GobEncode(MessageBindRequest{Type: t, Data: gobEncodedData})
 
 	return
+}
+
+func NewMessageBindTCP(address string) (msg *Message) {
+	return newMessageBind(ConnectorTypeTCP, GobEncode(address))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -288,23 +295,28 @@ type MessageConnectRequest struct {
 	Data []byte
 }
 
-func NewMessageConnect(t ConnectorType, data []byte) (msg Message) {
+func newMessageConnect(t ConnectorType, gobEncodedData []byte) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeConnect
-	msg.Data = GobEncode(MessageConnectRequest{Type: t, Data: data})
+	msg.Data = GobEncode(MessageConnectRequest{Type: t, Data: gobEncodedData})
 
 	return
+}
+
+func NewMessageConnectTCP(address string) (msg *Message) {
+	return newMessageConnect(ConnectorTypeTCP, GobEncode(address))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /******************************* MessageHello ********************************/
 ///////////////////////////////////////////////////////////////////////////////
+
 type MessageHelloResponse struct {
 	Node Node
 	Info NodeInfo
 }
 
-func NewMessageHello() (msg Message) {
+func NewMessageHello() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeHello
 	msg.Data = GobEncode(MessageHelloResponse{Node: ThisNode, Info: ThisNodeInfo})
@@ -315,11 +327,12 @@ func NewMessageHello() (msg Message) {
 ///////////////////////////////////////////////////////////////////////////////
 /****************************** MessageNewBind *******************************/
 ///////////////////////////////////////////////////////////////////////////////
+
 type MessageNewBindResponse struct {
 	Address string
 }
 
-func NewMessageNewBind(address string) (msg Message) {
+func NewMessageNewBind(address string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeNewBind
 	msg.Data = GobEncode(MessageNewBindResponse{Address: address})
@@ -330,11 +343,12 @@ func NewMessageNewBind(address string) (msg Message) {
 ///////////////////////////////////////////////////////////////////////////////
 /*************************** MessageNewConnection ****************************/
 ///////////////////////////////////////////////////////////////////////////////
+
 type MessageNewConnectionResponse struct {
 	Address string
 }
 
-func NewMessageNewConnection(address string) (msg Message) {
+func NewMessageNewConnection(address string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeNewConnection
 	msg.Data = GobEncode(MessageNewConnectionResponse{Address: address})
@@ -345,50 +359,50 @@ func NewMessageNewConnection(address string) (msg Message) {
 ///////////////////////////////////////////////////////////////////////////////
 /*************************** MessageTerminateAgent ***************************/
 ///////////////////////////////////////////////////////////////////////////////
-type MessageTerminateAgentRequest struct {
-	Cleanup bool
+
+type MessageTerminateRequest struct {
+	Type  MessageTerminateType
+	Index uint
 }
 
-func NewMessageTerminateAgent(cleanup bool) (msg Message) {
+type MessageTerminateType byte
+
+const (
+	MessageTerminateTypeAgent MessageTerminateType = iota + 1
+	MessageTerminateTypeConnection
+	MessageTerminateTypeListener
+	MessageTerminateTypeShell
+	MessageTerminateTypeStream
+)
+
+func NewMessageTerminate(t MessageTerminateType, index uint) (msg *Message) {
 	msg = NewMessage()
-	msg.Type = MessageTypeTerminateAgent
-	msg.Data = GobEncode(MessageTerminateAgentRequest{Cleanup: cleanup})
+	msg.Type = MessageTypeTerminate
+	msg.Data = GobEncode(MessageTerminateRequest{Type: t, Index: index})
 
 	return
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/****************************** Message Tracker ******************************/
-///////////////////////////////////////////////////////////////////////////////
-
-// TrackMessage tracks a MessageID in the MessagesTracker for a
-// specified duration of time. Durations should be specific to each type of
-// connection (i.e., a slower connection using a mailing platform may have a
-// longer duration than a network based connection).
-func TrackMessage(id MessageID, d time.Duration) {
-	// Add the MessageID to the tracker
-	messageTracker[id] = true
-
-	time.AfterFunc(d, func() {
-		delete(messageTracker, id)
-	})
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /************************************ Send ***********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-func (msg Message) Send(src ConnectID) {
+func (msg *Message) Send(src ConnectID) {
+	connectionTrackerMutex.Lock()
+	defer connectionTrackerMutex.Unlock()
+
+	destinationTrackerMutex.Lock()
 	dst, exists := destinationTracker[msg.Destination]
+	destinationTrackerMutex.Unlock()
 
 	if msg.Destination.IsBroadcastNodeID() || !exists {
 		for conn := range connectionTracker {
 			if conn != src {
-				go connectionTracker[conn].Send(msg)
+				go connectionTracker[conn].Send(*msg)
 			}
 		}
 	} else {
-		go connectionTracker[dst].Send(msg)
+		go connectionTracker[dst].Send(*msg)
 	}
 }
 
@@ -396,10 +410,7 @@ func (msg Message) Send(src ConnectID) {
 /*********************************** Handle **********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-func (msg Message) Handle(src ConnectID) {
-	//DEBUG
-	fmt.Printf("DEBUG: Connection %s with %b messageType\n", src, msg.Type)
-
+func (msg *Message) Handle(src ConnectID) {
 	// If part of a stream, offload to the functions in stream.go
 	if msg.Type == MessageTypeStream {
 		msg.HandleStream()
@@ -407,19 +418,37 @@ func (msg Message) Handle(src ConnectID) {
 	}
 
 	// Have we already received this Message before?
+	messageTrackerMutex.Lock()
+	defer messageTrackerMutex.Unlock()
 	if messageTracker[msg.ID] {
 		return
 	}
-	TrackMessage(msg.ID, connectionTracker[src].MessageDuration())
+
+	// Add the MessageID to the tracker, removing after certain duration
+	connectionTrackerMutex.Lock()
+	messageTracker[msg.ID] = true
+	time.AfterFunc(connectionTracker[src].MessageDuration(), func() {
+		messageTrackerMutex.Lock()
+		defer messageTrackerMutex.Unlock()
+		delete(messageTracker, msg.ID)
+	})
+	connectionTrackerMutex.Unlock()
+
+	// Track destination
+	if !src.IsNone() && !msg.Source.IsBroadcastNodeID() {
+		destinationTrackerMutex.Lock()
+		destinationTracker[msg.Source] = src
+		destinationTrackerMutex.Unlock()
+	}
 
 	// Is the MessageType supposed to be broadcasted or sent to an individual?
 	if msg.Destination.IsBroadcastNodeID() {
 		// Pass it along first and then process
-		msg.Send(src)
-		msg.Process()
+		go msg.Send(src)
+		go msg.Process()
 	} else if msg.Destination == ThisNode.ID {
-		msg.Process()
+		go msg.Process()
 	} else {
-		msg.Send(src)
+		go msg.Send(src)
 	}
 }

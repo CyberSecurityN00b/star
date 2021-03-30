@@ -7,9 +7,11 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -23,6 +25,7 @@ var activeStream star.StreamID
 var tickerSynchronization *time.Ticker
 
 func main() {
+	showWelcomeText()
 	initTerminal()
 
 	// Send a "hello" message to any existing connections
@@ -33,6 +36,20 @@ func main() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+
+func showWelcomeText() {
+
+	fmt.Println("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
+	fmt.Println("*             _____        _____           ___        ______                  |")
+	fmt.Println("|            /  ___|      |_   _|         / _ \\       | ___ \\                 *")
+	fmt.Println("*            \\  --.         | |          / /_\\ \\      | |_/ /                 |")
+	fmt.Println("|             `--. \\        | |          |  _  |      |    /                  *")
+	fmt.Println("*            /\\__/ /        | |          | | | |      | |\\ \\                  |")
+	fmt.Println("|            \\____/ imple   \\_/ actical  \\_| |_/ gent \\_| \\_| elay            *")
+	fmt.Println("*                                                                             |")
+	fmt.Println("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
+	fmt.Println("")
+}
 
 func initTerminal() {
 	star.STARCoreSetup()
@@ -67,10 +84,13 @@ func initTerminal() {
 
 	// Setup history
 	historyItems = make(map[uint]historyItem)
+	historyItemsMutex = &sync.Mutex{}
 
 	// Setup agent tracker
 	agentFriendlyTracker = make(map[string]*agentInfo)
 	agentNodeIDTracker = make(map[star.NodeID]*agentInfo)
+	agentTrackerMutex = &sync.Mutex{}
+	AgentTrackerUpdateInfo(&star.ThisNode, &star.ThisNodeInfo)
 
 	// Synchronization ticker
 	tickerSynchronization = time.NewTicker(time.Duration(terminalSettings["sync.minutes"].Data.(int)) * time.Minute)
@@ -78,9 +98,7 @@ func initTerminal() {
 		for {
 			select {
 			case <-tickerSynchronization.C:
-				printInfo("Synchronizing with agents...")
-				syncMsg := star.NewMessageSyncRequest()
-				syncMsg.Send(star.ConnectID{})
+				TerminalSynchronize()
 
 				next := terminalSettings["sync.minutes"].Data.(int)
 				if next >= 1 {
@@ -123,6 +141,11 @@ func handleTerminalInput(input string) {
 
 	// Handle
 	inputs := strings.Split(input, " ")
+
+	if inputs[0] != "::" || input[0] == ':' {
+		fmt.Println("/*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*\\")
+	}
+
 	switch inputs[0] {
 	case ":?", ":help":
 		topic := ""
@@ -139,7 +162,7 @@ func handleTerminalInput(input string) {
 				// Use broadcast NodeID to send address string to all Nodes
 				terminalCommandBind(star.NodeID{}, inputs[2:]...)
 			} else if strings.HasPrefix(inputs[1], "agent") {
-				node, ok := agentFriendlyTracker[inputs[1]]
+				node, ok := AgentTrackerGetInfoByFriendly(inputs[1])
 				if !ok {
 					// Invalid agentID
 					printError("No such agent as " + inputs[1] + "!")
@@ -163,7 +186,7 @@ func handleTerminalInput(input string) {
 				// Use broadcast NodeID to send address string to all Nodes
 				terminalCommandConnect(star.NodeID{}, inputs[2:]...)
 			} else if strings.HasPrefix(inputs[1], "agent") {
-				node, ok := agentFriendlyTracker[inputs[1]]
+				node, ok := AgentTrackerGetInfoByFriendly(inputs[1])
 				if !ok {
 					// Invalid agentID
 					printError("No such agent as " + inputs[1] + "!")
@@ -181,23 +204,42 @@ func handleTerminalInput(input string) {
 	case ":d", ":down", ":download":
 		terminalCommandDownload()
 	case ":h", ":history":
-		if len(inputs) >= 2 {
+		if len(inputs) == 2 {
 			if inputs[1] == "all" {
 				terminalCommandHistory(true, activeNode, activeStream)
 			}
-			// TODO: Convert agent/string to ID
-			terminalCommandHistory(false, activeNode, activeStream)
+			node, ok := AgentTrackerGetInfoByFriendly(inputs[1])
+			if !ok {
+				terminalCommandList("all")
+				printError(fmt.Sprintf("%s is not a valid identifier, use one of the above!", inputs[1]))
+			} else {
+				terminalCommandHistory(false, node.Node.ID, activeStream)
+			}
 		} else {
 			terminalCommandHistory(false, activeNode, activeStream)
 		}
 	case ":i", ":info", ":information":
-		terminalCommandInformation()
+		if len(inputs) == 2 {
+			terminalCommandInformation(inputs[1])
+		} else if len(inputs) == 1 {
+			terminalCommandInformation("")
+		} else {
+			terminalCommandHelp(":i")
+		}
 	case ":j", ":jump":
-		terminalCommandJump()
+		if len(inputs) == 2 {
+			terminalCommandJump(inputs[1])
+		} else {
+			terminalCommandHelp(":j")
+		}
 	case ":k", ":kill", ":killswitch":
 		terminalCommandKillSwitch()
 	case ":l", ":list":
-		terminalCommandList()
+		if len(inputs) >= 2 {
+			terminalCommandList(inputs[1])
+		} else {
+			terminalCommandList("all")
+		}
 	case ":s", ":set", ":setting", ":settings":
 		if len(inputs) == 1 {
 			terminalCommandSet("", "")
@@ -206,10 +248,18 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandSet(inputs[1], star.StringifySubarray(inputs, 2, len(inputs)))
 		}
+	case ":sync":
+		TerminalSynchronize()
 	case ":r", ":run", ":runfile":
 		terminalCommandRunFile()
 	case ":t", ":terminate":
-		terminalCommandTerminate()
+		if len(inputs) == 1 {
+			terminalCommandTerminate("")
+		} else if len(inputs) == 2 {
+			terminalCommandTerminate(inputs[1])
+		} else {
+			terminalCommandHelp(":t")
+		}
 	case ":u", ":up", ":upload":
 		terminalCommandUpload()
 	case ":q", ":quit":
@@ -229,6 +279,11 @@ func handleTerminalInput(input string) {
 			terminalCommandSendCommand(input)
 		}
 	}
+
+	if inputs[0] != "::" || input[0] == ':' {
+		fmt.Println("\\*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*/")
+	}
+
 	return
 }
 
@@ -239,10 +294,12 @@ func handleTerminalInput(input string) {
 type ANSIColor string
 
 const (
-	ANSIColor_Error ANSIColor = "\033[0;31m%s\033[0m"
-	ANSIColor_Info  ANSIColor = "\033[0;36m%s\033[0m"
-	ANSIColor_Debug ANSIColor = "\033[1;31m%s\033[0m"
-	ANSIColor_Time  ANSIColor = "\033[7m%s\033[0m"
+	ANSIColor_Error  ANSIColor = "\033[0;31m%s\033[0m"
+	ANSIColor_Info   ANSIColor = "\033[0;36m%s\033[0m"
+	ANSIColor_Debug  ANSIColor = "\033[1;31m%s\033[0m"
+	ANSIColor_Time   ANSIColor = "\033[7m%s\033[0m"
+	ANSIColor_Focus  ANSIColor = "\033[7m%s\033[0m"
+	ANSIColor_Notice ANSIColor = "\033[33m%s\033[0m"
 )
 
 func ANSIColorize(text string, color ANSIColor) string {
@@ -269,12 +326,15 @@ func printDebug(text string) {
 	fmt.Println(ANSIColorize(time.Now().Format(terminalSettings["display.timestamp"].Data.(string)), ANSIColor_Time), ANSIColorize("[ STAR | debug ]> "+text, ANSIColor_Debug))
 }
 
+func printNotice(text string) {
+	fmt.Println(ANSIColorize(time.Now().Format(terminalSettings["display.timestamp"].Data.(string)), ANSIColor_Time), ANSIColorize("[ STAR | !!!!! ]> "+text, ANSIColor_Notice))
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /************************* Terminal Command Handling *************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 func terminalCommandHelp(topic string) {
-	fmt.Println("********************************************************************************")
 	switch strings.ToLower(topic) {
 	case ":?", ":help":
 		fmt.Println("--> COMMAND HELP FOR: :?, :help")
@@ -389,6 +449,17 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\t<<<>>>")
+	case ":sync":
+		fmt.Println("--> COMMAND HELP FOR: :sync")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("EXAMPLES:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
 	case ":t", ":terminate":
 		fmt.Println("--> COMMAND HELP FOR: :t, :terminate")
 		fmt.Println()
@@ -450,8 +521,8 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("TODO: Write this section when STAR is functional.")
 	default:
-		fmt.Println("------------------------------ STAR Help Overview ------------------------------")
-		fmt.Println("********************************************************************************")
+		fmt.Println("------------------------------ STAR Help Overview -----------------------------")
+		fmt.Println("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
 
 		if topic != "" {
 			fmt.Println()
@@ -472,6 +543,7 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
 		fmt.Fprintln(w, ":r :run :runfile \t Runs a prepared file of commands.")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
+		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
 		fmt.Fprintln(w, ":t :terminate \t Terminates an agent, connection, or command.")
 		fmt.Fprintln(w, ":u :up :upload \t Uploads a file from the agent to the terminal.")
 		fmt.Fprintln(w, ":q :quit \t Quits the current terminal.")
@@ -488,7 +560,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("\tterminal")
 		w.Flush()
 	}
-	fmt.Println("********************************************************************************")
 }
 
 func terminalCommandBind(node star.NodeID, addresses ...string) {
@@ -501,8 +572,9 @@ func terminalCommandBind(node star.NodeID, addresses ...string) {
 
 	if node != star.ThisNode.ID {
 		for _, address := range addresses {
-			// TODO: Send to agent
-			print("Not yet implemented for agent to bind to: " + address)
+			bindMsg := star.NewMessageBindTCP(address)
+			bindMsg.Destination = node
+			bindMsg.Send(star.ConnectID{})
 		}
 	}
 	return
@@ -518,8 +590,9 @@ func terminalCommandConnect(node star.NodeID, addresses ...string) (err error) {
 
 	if node != star.ThisNode.ID {
 		for _, address := range addresses {
-			// TODO: Send to agent
-			print("Not yet implemented for agent to connect to: " + address)
+			conMsg := star.NewMessageConnectTCP(address)
+			conMsg.Destination = node
+			conMsg.Send(star.ConnectID{})
 		}
 	}
 	return
@@ -531,6 +604,9 @@ func terminalCommandDownload() (err error) {
 }
 
 func terminalCommandHistory(all bool, node star.NodeID, stream star.StreamID) (err error) {
+	historyItemsMutex.Lock()
+	defer historyItemsMutex.Unlock()
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 
 	// "Filter" the history items
@@ -563,23 +639,179 @@ func terminalCommandHistory(all bool, node star.NodeID, stream star.StreamID) (e
 	return
 }
 
-func terminalCommandInformation() (err error) {
-	fmt.Printf("Terminal ID: %v\n", star.ThisNode.ID)
+func terminalCommandInformation(context string) (err error) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+	agent, ok := AgentTrackerGetInfoByFriendly(context)
+
+	if !ok || context == "" {
+		terminalCommandList("all")
+	} else {
+		fmt.Fprintln(w, "NODE.ID: ", "\t", agent.Node.ID)
+		fmt.Fprintln(w, "OS.EGID: ", "\t", agent.Info.OS_egid)
+		fmt.Fprintln(w, "OS.EUID: ", "\t", agent.Info.OS_euid)
+		fmt.Fprintln(w, "OS.GID: ", "\t", agent.Info.OS_gid)
+		fmt.Fprintln(w, "OS.GROUPS: ", "\t", agent.Info.OS_groups)
+		fmt.Fprintln(w, "OS.PAGESIZE: ", "\t", agent.Info.OS_pagesize)
+		fmt.Fprintln(w, "OS.PID: ", "\t", agent.Info.OS_pid)
+		fmt.Fprintln(w, "OS.PPID: ", "\t", agent.Info.OS_ppid)
+		fmt.Fprintln(w, "OS.UID: ", "\t", agent.Info.OS_uid)
+		fmt.Fprintln(w, "OS.DIR: ", "\t", agent.Info.OS_workingdir)
+		fmt.Fprintln(w, "OS.HOSTNAME: ", "\t", agent.Info.OS_hostname)
+		w.Flush()
+		fmt.Println()
+		fmt.Println("ENVIRONMENT VARIABLES:")
+		for _, e := range agent.Info.OS_environ {
+			fmt.Println("\t", e)
+		}
+	}
 	return
 }
 
-func terminalCommandJump() (err error) {
-	printError("Jump is not yet implemented!")
+func terminalCommandJump(context string) (err error) {
+	identifiers := strings.Split(context, ":")
+	agent, ok := AgentTrackerGetInfoByFriendly(identifiers[0])
+	if !ok {
+		terminalCommandList("all")
+		printError(fmt.Sprintf("%s is not a valid identifier! Use one of the above agents!", identifiers[0]))
+	} else if context == "" {
+		terminalCommandHelp(":j")
+		printError("Must specify agent or agent:stream to jump to!")
+	} else if !strings.HasPrefix(context, "agent") {
+		printError(fmt.Sprintf("%s is not an agent! Only agents can be jumped to!", context))
+	} else {
+		activeNode = agent.Node.ID
+		activeStream = star.StreamID{}
+		printInfo(fmt.Sprintf("Changing agent focus to %s(%s)", agent.FriendlyName, agent.Node.ID))
+		if len(identifiers) > 1 {
+			for i, id := range agent.Info.StreamIDs {
+				streamname := fmt.Sprintf("stream%03d", i)
+				if streamname == identifiers[1] {
+					if agent.Info.StreamTypes[i] == star.StreamTypeCommand {
+						activeStream = id
+						printInfo(fmt.Sprintf("Changing stream focus to %s(%s)", streamname, id))
+					} else {
+						printError(fmt.Sprintf("%s for %s is not a Command type stream; only Command type streams can have focus. No stream focus set.", streamname, agent.FriendlyName))
+					}
+				}
+			}
+		}
+	}
 	return
 }
 
 func terminalCommandKillSwitch() (err error) {
-	printError("Killswitch is not yet implemented!")
+	killMsg := star.NewMessageKillSwitch()
+	killMsg.Send(star.ConnectID{})
 	return
 }
 
-func terminalCommandList() (err error) {
-	printError("List is not yet implemented!")
+func terminalCommandList(context string) (err error) {
+	agentTrackerMutex.Lock()
+	defer agentTrackerMutex.Unlock()
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+
+	if context == "all" {
+		fmt.Println("Agents:")
+		for _, a := range agentFriendlyTracker {
+			focus := ""
+			if a.Node.ID == activeNode {
+				if activeStream.IsEmptyStreamID() {
+					focus = ANSIColorize("CURRENT FOCUS", ANSIColor_Focus)
+				} else {
+					focus = ANSIColorize("CURRENT FOCUS (STREAM)", ANSIColor_Focus)
+				}
+			}
+			fmt.Fprintln(w, "    ", a.FriendlyName, "\t", a.Info.OS_hostname, "\t", focus, "\t", fmt.Sprintf("Last synced %0.1f minutes ago", time.Since(a.LastSynced).Minutes()))
+		}
+		w.Flush()
+	} else {
+		agent, ok := agentFriendlyTracker[context]
+		if ok {
+			fmt.Println("Connections:")
+			//Sort then print
+			keys := make([]uint, len(agent.Info.ConnectionIDs))
+			ki := 0
+			for k := range agent.Info.ConnectionIDs {
+				keys[ki] = k
+				ki++
+			}
+			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+			for _, i := range keys {
+				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:conn%03d", agent.FriendlyName, i), "\t", agent.Info.ConnectionIDs[i], "\t", agent.Info.ConnectionInfos[i])
+			}
+			w.Flush()
+			fmt.Println()
+
+			fmt.Println("Listeners:")
+			//Sort then print
+			keys = make([]uint, len(agent.Info.ListenerIDs))
+			ki = 0
+			for k := range agent.Info.ListenerIDs {
+				keys[ki] = k
+				ki++
+			}
+			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+			for _, i := range keys {
+				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:listener%03d", agent.FriendlyName, i), "\t", agent.Info.ListenerIDs[i], "\t", agent.Info.ListenerInfos[i])
+			}
+			w.Flush()
+			fmt.Println()
+
+			fmt.Println("Shells:")
+			keys = make([]uint, len(agent.Info.ShellIDs))
+			ki = 0
+			for k := range agent.Info.ShellIDs {
+				keys[ki] = k
+				ki++
+			}
+			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+			for _, i := range keys {
+				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:shell%03d", agent.FriendlyName, i), "\t", agent.Info.ShellIDs[i], "\t", agent.Info.ShellInfos[i])
+			}
+			w.Flush()
+			fmt.Println()
+
+			fmt.Println("Streams:")
+			keys = make([]uint, len(agent.Info.StreamIDs))
+			ki = 0
+			for k := range agent.Info.StreamIDs {
+				keys[ki] = k
+				ki++
+			}
+			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+			for _, i := range keys {
+				var streamtype string
+				switch agent.Info.StreamTypes[i] {
+				case star.StreamTypeCommand:
+					streamtype = "Command"
+				case star.StreamTypeFileUpload:
+					streamtype = "Upload"
+				case star.StreamTypeFileDownload:
+					streamtype = "Download"
+				case star.StreamTypeShell:
+					streamtype = "Shell"
+				case star.StreamTypeAgentDownload:
+					streamtype = "Agent"
+				default:
+					streamtype = "Unknown"
+				}
+
+				focus := ""
+				if agent.Info.StreamIDs[i] == activeStream {
+					focus = ANSIColorize("CURRENT FOCUS", ANSIColor_Focus)
+				}
+
+				fmt.Fprintln(w, "    ", fmt.Sprintf("stream%03d", i), "\t", agent.Info.StreamIDs[i], "\t", streamtype, "\t", agent.Info.StreamInfos[i], "\t", focus)
+			}
+			w.Flush()
+			fmt.Println()
+		} else {
+			terminalCommandList("all")
+			printError(fmt.Sprintf("%s is not a valid identifier! Use one of the above!", context))
+		}
+	}
+
 	return
 }
 
@@ -638,8 +870,61 @@ func terminalCommandSet(setting string, value string) (err error) {
 	return
 }
 
-func terminalCommandTerminate() (err error) {
-	printError("Terminate is not yet implemented!")
+func terminalCommandTerminate(context string) (err error) {
+	identifiers := strings.Split(context, ":")
+	agent, ok := AgentTrackerGetInfoByFriendly(identifiers[0])
+	if !ok {
+		terminalCommandList("all")
+		printError(fmt.Sprintf("%s is not a valid identifier! Use one of the above agents!", identifiers[0]))
+	} else if context == "" {
+		terminalCommandHelp(":t")
+		printError("Must explicitly specify agent, agent:connection, agent:listener, agent:shell, or agent:stream!")
+	} else if !strings.HasPrefix(context, "agent") {
+		printError(fmt.Sprintf("%s is not an agent! Terminating termination attempt."))
+	} else {
+		if len(identifiers) == 1 {
+			termMsg := star.NewMessageTerminate(star.MessageTerminateTypeAgent, 0)
+			termMsg.Destination = agent.Node.ID
+			termMsg.Send(star.ConnectID{})
+			AgentTrackerRemoveInfo(agent.Node.ID)
+		} else if len(identifiers) == 2 {
+			match := regexp.MustCompile(`^(conn|listener|shell|stream)(\d+)$`).FindStringSubmatch(identifiers[1])
+			if len(match) == 3 {
+				index, _ := strconv.ParseUint(match[2], 10, 64)
+				switch match[1] {
+				case "conn":
+					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeConnection, uint(index))
+					termMsg.Destination = agent.Node.ID
+					termMsg.Send(star.ConnectID{})
+				case "listener":
+					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeListener, uint(index))
+					termMsg.Destination = agent.Node.ID
+					termMsg.Send(star.ConnectID{})
+				case "shell":
+					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeShell, uint(index))
+					termMsg.Destination = agent.Node.ID
+					termMsg.Send(star.ConnectID{})
+				case "stream":
+					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeStream, uint(index))
+					termMsg.Destination = agent.Node.ID
+					termMsg.Send(star.ConnectID{})
+				default:
+					// Shouldn't ever reach here, but, uh, oh well.
+					terminalCommandList(identifiers[0])
+					printError(fmt.Sprintf("%s has an invalid sub-identifier! Must be one of the ones listed above!", context))
+					return
+				}
+			} else {
+				terminalCommandList(identifiers[0])
+				printError(fmt.Sprintf("%s has an invalid sub-identifier! Must be one of the ones listed above!", context))
+				return
+			}
+		} else {
+			terminalCommandHelp(":t")
+			printError("Invalid number of separators!")
+			return
+		}
+	}
 	return
 }
 
@@ -685,11 +970,11 @@ func TerminalProcessMessage(msg *star.Message) {
 }
 
 func TerminalProcessCommandResponse(msg *star.Message) {
-	var resmsg star.MessageCommandResponse
+	var resMsg star.MessageCommandResponse
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resmsg)
+	err := gob.NewDecoder(&b).Decode(&resMsg)
 	if err == nil {
 		// TODO: Handle Command Response
 	} else {
@@ -708,13 +993,18 @@ func TerminalProcessMessageError(msg *star.Message) {
 		case star.MessageErrorResponseTypeX509KeyPair:
 			printError(fmt.Sprintf("%s has reported an error with the creation of the X509 Key pair. Context: %s", FriendlyAgentName(msg), errmsg.Context))
 		case star.MessageErrorResponseTypeConnectionLost:
-			printError(fmt.Sprintf("%s has reported that it has lost/dropped the connection with %s.", FriendlyAgentName(msg), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the connection with %s.", FriendlyAgentName(msg), errmsg.Context))
 		case star.MessageErrorResponseTypeBindDropped:
-			printError(fmt.Sprintf("%s has reported that it has lost/dropped the listening bind on %s", FriendlyAgentName(msg), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the listening bind on %s", FriendlyAgentName(msg), errmsg.Context))
 		case star.MessageErrorResponseTypeGobDecodeError:
 			printError(fmt.Sprintf("%s has reported an error with attempting to gob decode a message of type %s.", FriendlyAgentName(msg), errmsg.Context))
 		case star.MessageErrorResponseTypeAgentExitSignal:
-			printError(fmt.Sprintf("%s has reported that it was terminated with the signal interrupt %s.", FriendlyAgentName(msg), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it was terminated with the signal interrupt %s.", FriendlyAgentName(msg), errmsg.Context))
+			AgentTrackerRemoveInfo(msg.Source)
+		case star.MessageErrorResponseTypeUnsupportedConnectorType:
+			printError(fmt.Sprintf("%s has reported that an unsupported connector type was specified. Context: %s", FriendlyAgentName(msg), errmsg.Context))
+		case star.MessageErrorResponseTypeInvalidTerminationIndex:
+			printError(fmt.Sprintf("%s has reported that an invalid termination index was specified. Context: %s", FriendlyAgentName(msg), errmsg.Context))
 		default:
 			printError(fmt.Sprintf("%s has reported an unknown error. Context: %s", FriendlyAgentName(msg), errmsg.Context))
 		}
@@ -724,16 +1014,16 @@ func TerminalProcessMessageError(msg *star.Message) {
 }
 
 func TerminalProcessSyncResponse(msg *star.Message) {
-	var resmsg star.MessageSyncResponse
+	var resMsg star.MessageSyncResponse
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resmsg)
+	err := gob.NewDecoder(&b).Decode(&resMsg)
 	if err == nil {
-		// TODO: Handle Sync Response
+		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
 
 		if !terminalSettings["sync.mute"].Data.(bool) {
-			printError(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg)))
+			printInfo(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg)))
 		}
 	} else {
 		if !terminalSettings["sync.muteerrors"].Data.(bool) {
@@ -743,39 +1033,45 @@ func TerminalProcessSyncResponse(msg *star.Message) {
 }
 
 func TerminalProcessMessageNewBind(msg *star.Message) {
-	var resmsg star.MessageNewBindResponse
+	var resMsg star.MessageNewBindResponse
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resmsg)
+	err := gob.NewDecoder(&b).Decode(&resMsg)
 	if err == nil {
-		printInfo(fmt.Sprintf("%s has reported a new bind/listner on %s.", FriendlyAgentName(msg), resmsg.Address))
+		printInfo(fmt.Sprintf("%s has reported a new bind/listener on %s.", FriendlyAgentName(msg), resMsg.Address))
 	} else {
 		printError(fmt.Sprintf("%s attempted to report a new bind/listener, but there was an error when decoding the data.", FriendlyAgentName(msg)))
 	}
+
+	// Resynchronize
+	TerminalSynchronize()
 }
 
 func TerminalProcessMessageNewConnection(msg *star.Message) {
-	var resmsg star.MessageNewConnectionResponse
+	var resMsg star.MessageNewConnectionResponse
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resmsg)
+	err := gob.NewDecoder(&b).Decode(&resMsg)
 	if err == nil {
-		printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg), resmsg.Address))
+		printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg), resMsg.Address))
 	} else {
 		printError(fmt.Sprintf("%s attempted to report a new connection, but there was an error when decoding the data.", FriendlyAgentName(msg)))
 	}
+
+	// Resynchronize
+	TerminalSynchronize()
 }
 
 func TerminalProcessMessageHello(msg *star.Message) {
-	var resmsg star.MessageHelloResponse
+	var resMsg star.MessageHelloResponse
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resmsg)
+	err := gob.NewDecoder(&b).Decode(&resMsg)
 	if err == nil {
-		UpdateNode(&resmsg.Node, &resmsg.Info)
+		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
 	} else {
 		printError(fmt.Sprintf("%s attempted to report an initial connection with the constellation, but there was an error when decoding the data.", FriendlyAgentName(msg)))
 	}
@@ -787,8 +1083,20 @@ func FriendlyAgentName(msg *star.Message) string {
 	} else if msg.Source == star.ThisNode.ID {
 		return "This terminal"
 	} else {
-		return fmt.Sprintf("Agent %s", msg.Source)
+		n, ok := agentNodeIDTracker[msg.Source]
+		if ok {
+			return fmt.Sprintf("%s", n.FriendlyName)
+		} else {
+			return fmt.Sprintf("%s", msg.Source)
+		}
 	}
+}
+
+func TerminalSynchronize() {
+	printInfo("Synchronizing with agents...")
+	syncMsg := star.NewMessageSyncRequest()
+	syncMsg.Send(star.ConnectID{})
+	AgentTrackerUpdateInfo(&star.ThisNode, &star.ThisNodeInfo)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -802,9 +1110,13 @@ type historyItem struct {
 }
 
 var historyItems map[uint]historyItem
+var historyItemsMutex *sync.Mutex
 var historyIndex uint
 
 func HistoryPush(item historyItem) {
+	historyItemsMutex.Lock()
+	defer historyItemsMutex.Unlock()
+
 	historyIndex++
 	historyItems[historyIndex] = item
 
@@ -823,6 +1135,9 @@ func HistoryPush(item historyItem) {
 }
 
 func HistoryPop() {
+	historyItemsMutex.Lock()
+	defer historyItemsMutex.Unlock()
+
 	delete(historyItems, historyIndex)
 	historyIndex--
 }
@@ -846,17 +1161,22 @@ type agentInfo struct {
 	Node         *star.Node
 	Info         *star.NodeInfo
 	FriendlyName string
+	LastSynced   time.Time
 }
 
 var agentFriendlyTracker map[string]*agentInfo
 var agentNodeIDTracker map[star.NodeID]*agentInfo
+var agentTrackerMutex *sync.Mutex
 
 var agentFriendlyNameTracker int
 var shellFriendlyNameCounter int
 var terminalFriendlyNameCounter int
 var unknownFriendlyNameCounter int
 
-func UpdateNode(node *star.Node, info *star.NodeInfo) {
+func AgentTrackerUpdateInfo(node *star.Node, info *star.NodeInfo) {
+	agentTrackerMutex.Lock()
+	defer agentTrackerMutex.Unlock()
+
 	var i *agentInfo
 	i, ok := agentNodeIDTracker[node.ID]
 	if !ok {
@@ -864,7 +1184,7 @@ func UpdateNode(node *star.Node, info *star.NodeInfo) {
 		switch node.Type {
 		case star.NodeTypeAgent:
 			agentFriendlyNameTracker++
-			name = fmt.Sprintf("agent%06d", agentFriendlyNameTracker)
+			name = fmt.Sprintf("agent%03d", agentFriendlyNameTracker)
 		case star.NodeTypeShell:
 			shellFriendlyNameCounter++
 			name = fmt.Sprintf("shell%03d", shellFriendlyNameCounter)
@@ -883,6 +1203,35 @@ func UpdateNode(node *star.Node, info *star.NodeInfo) {
 
 	i.Node = node
 	i.Info = info
+	i.LastSynced = time.Now()
+
+	agentNodeIDTracker[node.ID] = i
+	agentFriendlyTracker[i.FriendlyName] = i
+}
+
+func AgentTrackerRemoveInfo(id star.NodeID) {
+	n, ok := AgentTrackerGetInfoByNodeID(id)
+	if ok {
+		agentTrackerMutex.Lock()
+		defer agentTrackerMutex.Unlock()
+
+		delete(agentFriendlyTracker, n.FriendlyName)
+		delete(agentNodeIDTracker, id)
+	}
+}
+
+func AgentTrackerGetInfoByFriendly(name string) (ai *agentInfo, ok bool) {
+	agentTrackerMutex.Lock()
+	defer agentTrackerMutex.Unlock()
+	ai, ok = agentFriendlyTracker[name]
+	return
+}
+
+func AgentTrackerGetInfoByNodeID(id star.NodeID) (ai *agentInfo, ok bool) {
+	agentTrackerMutex.Lock()
+	defer agentTrackerMutex.Unlock()
+	ai, ok = agentNodeIDTracker[id]
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////

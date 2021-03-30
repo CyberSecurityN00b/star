@@ -2,6 +2,8 @@ package star
 
 import (
 	"crypto/tls"
+	"fmt"
+	"sync"
 	"time"
 )
 
@@ -11,17 +13,25 @@ type Connection interface {
 	MessageDuration() time.Duration
 	Send(msg Message) (err error)
 	StreamChunkSize() uint
+	Close()
 }
 
 // The Connector interface provides the standard functions for creating STAR node connections.
 type Connector interface {
 	Connect() (err error)
 	Listen() (err error)
+	Close()
 }
 
 var connectionTracker map[ConnectID]Connection
+var connectionTrackerMutex *sync.Mutex
+
 var listenerTracker map[ConnectID]Connector
+var listenerTrackerMutex *sync.Mutex
+
 var destinationTracker map[NodeID]ConnectID
+var destinationTrackerMutex *sync.Mutex
+
 var ConnectionCert tls.Certificate
 var ConnectionConfig *tls.Config
 
@@ -38,9 +48,14 @@ func NewConnectID() (id ConnectID) {
 	return
 }
 
+func (id ConnectID) IsNone() bool {
+	var c ConnectID
+	return id == c
+}
+
 // Formats a ConnectID into a print-friendly string
 func (id ConnectID) String() string {
-	return SqrtedString(id[:], "-")
+	return SqrtedString(id[:], ".")
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -62,13 +77,28 @@ const (
 
 // RegisterConnection adds a Connection to the tracker
 func RegisterConnection(conn Connection) ConnectID {
+	connectionTrackerMutex.Lock()
+	defer connectionTrackerMutex.Unlock()
+
 	id := NewConnectID()
 	connectionTracker[id] = conn
 	return id
 }
 
-// UnregisterConnection removes a Connectrion from the tracker
+func GetConnection(connID ConnectID) (c Connection, ok bool) {
+	connectionTrackerMutex.Lock()
+	defer connectionTrackerMutex.Unlock()
+
+	c, ok = connectionTracker[connID]
+	fmt.Println(connectionTracker)
+	return
+}
+
+// UnregisterConnection removes a Connection from the tracker
 func UnregisterConnection(connID ConnectID) {
+	connectionTrackerMutex.Lock()
+	defer connectionTrackerMutex.Unlock()
+
 	delete(connectionTracker, connID)
 }
 
@@ -78,12 +108,26 @@ func UnregisterConnection(connID ConnectID) {
 
 // RegisterListener adds a Listener to the tracker
 func RegisterListener(conn Connector) ConnectID {
+	listenerTrackerMutex.Lock()
+	defer listenerTrackerMutex.Unlock()
+
 	id := NewConnectID()
 	listenerTracker[id] = conn
 	return id
 }
 
+func GetListener(connID ConnectID) (c Connector, ok bool) {
+	listenerTrackerMutex.Lock()
+	defer listenerTrackerMutex.Unlock()
+
+	c, ok = listenerTracker[connID]
+	return
+}
+
 func UnregisterListener(connID ConnectID) {
+	listenerTrackerMutex.Lock()
+	defer listenerTrackerMutex.Unlock()
+
 	delete(listenerTracker, connID)
 }
 

@@ -135,6 +135,8 @@ func (ni *NodeInfo) Update() {
 
 func (ni *NodeInfo) AddConnector(id ConnectID, info string) {
 	nodeInfoConnectionIDsCount++
+	ni.ConnectionIDs[nodeInfoConnectionIDsCount] = id
+	ni.ConnectionInfos[nodeInfoConnectionIDsCount] = info
 }
 
 func (ni *NodeInfo) RemoveConnector(id ConnectID) {
@@ -148,6 +150,8 @@ func (ni *NodeInfo) RemoveConnector(id ConnectID) {
 
 func (ni *NodeInfo) AddListener(id ConnectID, info string) {
 	nodeInfoListenerIDsCount++
+	ni.ListenerIDs[nodeInfoListenerIDsCount] = id
+	ni.ListenerInfos[nodeInfoListenerIDsCount] = info
 }
 
 func (ni *NodeInfo) RemoveListener(id ConnectID) {
@@ -161,6 +165,8 @@ func (ni *NodeInfo) RemoveListener(id ConnectID) {
 
 func (ni *NodeInfo) AddShell(id NodeID, info string) {
 	nodeInfoShellIDsCount++
+	ni.ShellIDs[nodeInfoShellIDsCount] = id
+	ni.ShellInfos[nodeInfoShellIDsCount] = info
 }
 
 func (ni *NodeInfo) RemoveShell(id NodeID) {
@@ -172,8 +178,11 @@ func (ni *NodeInfo) RemoveShell(id NodeID) {
 	}
 }
 
-func (ni *NodeInfo) AddStream(id StreamID, info string) {
+func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string) {
 	nodeInfoStreamIDsCount++
+	ni.StreamIDs[nodeInfoStreamIDsCount] = id
+	ni.StreamTypes[nodeInfoStreamIDsCount] = t
+	ni.StreamInfos[nodeInfoStreamIDsCount] = info
 }
 
 func (ni *NodeInfo) RemoveStream(id StreamID) {

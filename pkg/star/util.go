@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"math"
 	"strings"
+	"sync"
 )
 
 // NewUID fills a byte array with random data
@@ -46,7 +47,15 @@ func StringifySubarray(arr []string, starti int, endi int) (s string) {
 
 func STARCoreSetup() {
 	connectionTracker = make(map[ConnectID]Connection)
+	connectionTrackerMutex = &sync.Mutex{}
+
 	listenerTracker = make(map[ConnectID]Connector)
+	listenerTrackerMutex = &sync.Mutex{}
+
 	destinationTracker = make(map[NodeID]ConnectID)
+	destinationTrackerMutex = &sync.Mutex{}
+
+	messageTracker = make(map[MessageID]bool)
+	messageTrackerMutex = &sync.Mutex{}
 	gob.Register(Message{})
 }

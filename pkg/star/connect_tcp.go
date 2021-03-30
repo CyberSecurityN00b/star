@@ -10,7 +10,8 @@ import (
 )
 
 type TCP_Connector struct {
-	Address string
+	Address  string
+	Listener *net.Listener
 }
 
 type TCP_Connection struct {
@@ -22,19 +23,19 @@ type TCP_Connection struct {
 }
 
 func NewTCPConnection(address string) {
-	go TCP_Connector{Address: address}.Connect()
+	go (&TCP_Connector{Address: address}).Connect()
 }
 
 func NewTCPListener(address string) {
-	go TCP_Connector{Address: address}.Listen()
+	go (&TCP_Connector{Address: address}).Listen()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 /******************************* TCP Connector *******************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-func (connector TCP_Connector) Connect() (err error) {
-	var conn TCP_Connection
+func (connector *TCP_Connector) Connect() (err error) {
+	conn := &TCP_Connection{}
 
 	c, err := tls.Dial("tcp", connector.Address, ConnectionConfig)
 	if err != nil {
@@ -50,14 +51,16 @@ func (connector TCP_Connector) Connect() (err error) {
 	return
 }
 
-func (connector TCP_Connector) Listen() error {
+func (connector *TCP_Connector) Listen() error {
 	l, err := tls.Listen("tcp", connector.Address, ConnectionConfig)
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
 
+	connector.Listener = &l
 	id := RegisterListener(connector)
+	ThisNodeInfo.AddListener(id, connector.Address)
 
 	// Defer cleanup for when listener ends
 	defer func() {
@@ -65,6 +68,7 @@ func (connector TCP_Connector) Listen() error {
 		msg := NewMessageError(MessageErrorResponseTypeBindDropped, connector.Address)
 		msg.Send(ConnectID{})
 		UnregisterListener(id)
+		ThisNodeInfo.RemoveListener(id)
 	}()
 
 	// Notify of new listener
@@ -88,6 +92,10 @@ func (connector TCP_Connector) Listen() error {
 	}
 }
 
+func (connector *TCP_Connector) Close() {
+	(*connector.Listener).Close()
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /******************************* TCP Connection ******************************/
 ///////////////////////////////////////////////////////////////////////////////
@@ -105,11 +113,13 @@ func (c TCP_Connection) Handle() {
 		msg := NewMessageError(MessageErrorResponseTypeConnectionLost, addr)
 		msg.Send(ConnectID{})
 		UnregisterConnection(c.ID)
+		ThisNodeInfo.RemoveConnector(c.ID)
 	}()
 
 	// Notify of new connection
 	msg := NewMessageNewConnection(addr)
 	msg.Send(ConnectID{})
+	ThisNodeInfo.AddConnector(c.ID, addr)
 
 	// If not a proper message, check if it is an HTTP request
 	// If an HTTP request, offload that to the STAR agent download feature
@@ -137,4 +147,13 @@ func (c TCP_Connection) Send(msg Message) (err error) {
 
 func (c TCP_Connection) StreamChunkSize() uint {
 	return 30000
+}
+
+func (c TCP_Connection) Close() {
+	if c.NetConn != nil {
+		c.NetConn.Close()
+	}
+	if c.TLSConn != nil {
+		c.TLSConn.Close()
+	}
 }

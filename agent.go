@@ -37,8 +37,8 @@ func main() {
 
 	//Handle termination
 	// TODO: change false to true when "done" with development
-	cleanMsg := star.NewMessageTerminateAgent(false)
-	star.ThisNode.MessageProcesser(&cleanMsg)
+	termMsg := star.NewMessageTerminate(star.MessageTerminateTypeAgent, 0)
+	star.ThisNode.MessageProcesser(termMsg)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -111,110 +111,202 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessKillSwitch(msg)
 	case star.MessageTypeSyncRequest:
 		AgentProcessSyncRequest(msg)
+	case star.MessageTypeTerminate:
+		AgentProcessTerminateRequest(msg)
 	}
 }
 
 func AgentProcessBind(msg *star.Message) {
-	var reqmsg star.MessageBindRequest
+	var reqMsg star.MessageBindRequest
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqmsg)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
 	if err == nil {
-		// TODO: Handle
+		switch reqMsg.Type {
+		case star.ConnectorTypeTCP:
+			var address string
+			b.Write(reqMsg.Data)
+			err := gob.NewDecoder(&b).Decode(&address)
+			if err == nil {
+				star.NewTCPListener(address)
+			} else {
+				errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d->%d", msg.Type, reqMsg.Type))
+				errMsg.Destination = msg.Source
+				errMsg.Send(star.ConnectID{})
+			}
+		}
 	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%b", msg.Type))
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
 		errMsg.Send(star.ConnectID{})
 	}
 }
 
 func AgentProcessCommandRequest(msg *star.Message) {
-	var reqmsg star.MessageCommandRequest
+	var reqMsg star.MessageCommandRequest
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqmsg)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
 	if err == nil {
 		// TODO: Handle
 	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%b", msg.Type))
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
 		errMsg.Send(star.ConnectID{})
 	}
 }
 
 func AgentProcessConnect(msg *star.Message) {
-	var reqmsg star.MessageConnectRequest
+	var reqMsg star.MessageConnectRequest
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqmsg)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
 	if err == nil {
-		// TODO: Handle
+		switch reqMsg.Type {
+		case star.ConnectorTypeTCP:
+			var address string
+			b.Write(reqMsg.Data)
+			err := gob.NewDecoder(&b).Decode(&address)
+			if err == nil {
+				star.NewTCPConnection(address)
+			} else {
+				errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d->%d", msg.Type, reqMsg.Type))
+				errMsg.Destination = msg.Source
+				errMsg.Send(star.ConnectID{})
+			}
+		default:
+			errMsg := star.NewMessageError(star.MessageErrorResponseTypeUnsupportedConnectorType, fmt.Sprintf("%d->%d", msg.Type, reqMsg.Type))
+			errMsg.Destination = msg.Source
+			errMsg.Send(star.ConnectID{})
+		}
 	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%b", msg.Type))
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
 		errMsg.Send(star.ConnectID{})
 	}
 }
 
 func AgentProcessFileDownload(msg *star.Message) {
-	var reqmsg star.MessageFileDownload
+	var reqMsg star.MessageFileDownload
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqmsg)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
 	if err == nil {
 		// TODO: Handle
 	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%b", msg.Type))
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
 		errMsg.Send(star.ConnectID{})
 	}
 }
 
 func AgentProcessFileUpload(msg *star.Message) {
-	var reqmsg star.MessageFileUpload
+	var reqMsg star.MessageFileUpload
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqmsg)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
 	if err == nil {
 		// TODO: Handle
 	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%b", msg.Type))
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
 		errMsg.Send(star.ConnectID{})
 	}
 }
 
 func AgentProcessKillSwitch(msg *star.Message) {
-	var reqmsg star.MessageKillSwitchRequest
+	var reqMsg star.MessageKillSwitchRequest
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqmsg)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
 	if err == nil {
-		// TODO: Handle
+		// TODO: Cleanup
+		os.Exit(1)
 	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%b", msg.Type))
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
 		errMsg.Send(star.ConnectID{})
 	}
 }
 
 func AgentProcessSyncRequest(msg *star.Message) {
-	var reqmsg star.MessageSyncRequest
+	var reqMsg star.MessageSyncRequest
 	var b bytes.Buffer
 
 	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqmsg)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
 	if err == nil {
-		// TODO: Handle
+		syncMsg := star.NewMessageSyncResponse()
+		syncMsg.Destination = msg.Source
+		syncMsg.Send(star.ConnectID{})
 	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%b", msg.Type))
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
+		errMsg.Send(star.ConnectID{})
+	}
+}
+
+func AgentProcessTerminateRequest(msg *star.Message) {
+	var reqMsg star.MessageTerminateRequest
+	var b bytes.Buffer
+	b.Write(msg.Data)
+	err := gob.NewDecoder(&b).Decode(&reqMsg)
+	if err == nil {
+		invalid := false
+		switch reqMsg.Type {
+		case star.MessageTerminateTypeAgent:
+			os.Exit(1)
+		case star.MessageTerminateTypeConnection:
+			id, ok := star.ThisNodeInfo.ConnectionIDs[reqMsg.Index]
+			if !ok {
+				invalid = true
+			} else {
+				conn, ok := star.GetConnection(id)
+				if !ok {
+					invalid = true
+				} else {
+					conn.Close()
+					star.ThisNodeInfo.RemoveConnector(id)
+				}
+			}
+		case star.MessageTerminateTypeListener:
+			id, ok := star.ThisNodeInfo.ListenerIDs[reqMsg.Index]
+			if !ok {
+				invalid = true
+			} else {
+				listener, ok := star.GetListener(id)
+				if !ok {
+					invalid = true
+				} else {
+					listener.Close()
+					star.ThisNodeInfo.RemoveListener(id)
+				}
+			}
+		case star.MessageTerminateTypeShell:
+			// TODO: terminate shell
+		case star.MessageTerminateTypeStream:
+			// TODO: terminate stream
+		default:
+			errMsg := star.NewMessageError(star.MessageErrorResponseTypeUnsupportedTerminationType, fmt.Sprintf("%d", reqMsg.Type))
+			errMsg.Destination = msg.Source
+			errMsg.Send(star.ConnectID{})
+		}
+
+		if invalid {
+			errMsg := star.NewMessageError(star.MessageErrorResponseTypeInvalidTerminationIndex, fmt.Sprintf("%d->%d", reqMsg.Type, reqMsg.Index))
+			errMsg.Destination = msg.Source
+			errMsg.Send(star.ConnectID{})
+		}
+	} else {
+		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
 		errMsg.Send(star.ConnectID{})
 	}
+	syncMsg := star.NewMessageSyncResponse()
+	syncMsg.Send(star.ConnectID{})
 }
