@@ -57,5 +57,7 @@ func STARCoreSetup() {
 
 	messageTracker = make(map[MessageID]bool)
 	messageTrackerMutex = &sync.Mutex{}
-	gob.Register(Message{})
+
+	ActiveStreams = make(map[StreamID]*StreamMeta)
+	ActiveStreamsMutex = &sync.Mutex{}
 }

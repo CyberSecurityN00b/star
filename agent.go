@@ -38,7 +38,7 @@ func main() {
 	//Handle termination
 	// TODO: change false to true when "done" with development
 	termMsg := star.NewMessageTerminate(star.MessageTerminateTypeAgent, 0)
-	star.ThisNode.MessageProcesser(termMsg)
+	star.ThisNode.MessageProcessor(termMsg)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -46,7 +46,8 @@ func main() {
 func initAgent() {
 	star.STARCoreSetup()
 	star.ThisNode = star.NewNode(star.NodeTypeAgent)
-	star.ThisNode.MessageProcesser = AgentProcessMessage
+	star.ThisNode.MessageProcessor = AgentProcessMessage
+	star.ThisNode.StreamProcessor = AgentProcessStream
 
 	star.ThisNodeInfo.Setup()
 
@@ -99,20 +100,20 @@ func AgentProcessMessage(msg *star.Message) {
 	switch msg.Type {
 	case star.MessageTypeBind:
 		AgentProcessBind(msg)
-	case star.MessageTypeCommandRequest:
-		AgentProcessCommandRequest(msg)
 	case star.MessageTypeConnect:
 		AgentProcessConnect(msg)
-	case star.MessageTypeFileDownload:
-		AgentProcessFileDownload(msg)
-	case star.MessageTypeFileUpload:
-		AgentProcessFileUpload(msg)
 	case star.MessageTypeKillSwitch:
 		AgentProcessKillSwitch(msg)
 	case star.MessageTypeSyncRequest:
 		AgentProcessSyncRequest(msg)
 	case star.MessageTypeTerminate:
 		AgentProcessTerminateRequest(msg)
+	case star.MessageTypeShell:
+		AgentProcessShellRequest(msg)
+	case star.MessageTypeDebug:
+		AgentProcessDebugRequest(msg)
+	case star.MessageTypeFileServer:
+		AgentProcessFileServerRequest(msg)
 	}
 }
 
@@ -136,21 +137,6 @@ func AgentProcessBind(msg *star.Message) {
 				errMsg.Send(star.ConnectID{})
 			}
 		}
-	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
-		errMsg.Destination = msg.Source
-		errMsg.Send(star.ConnectID{})
-	}
-}
-
-func AgentProcessCommandRequest(msg *star.Message) {
-	var reqMsg star.MessageCommandRequest
-	var b bytes.Buffer
-
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqMsg)
-	if err == nil {
-		// TODO: Handle
 	} else {
 		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
@@ -182,36 +168,6 @@ func AgentProcessConnect(msg *star.Message) {
 			errMsg.Destination = msg.Source
 			errMsg.Send(star.ConnectID{})
 		}
-	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
-		errMsg.Destination = msg.Source
-		errMsg.Send(star.ConnectID{})
-	}
-}
-
-func AgentProcessFileDownload(msg *star.Message) {
-	var reqMsg star.MessageFileDownload
-	var b bytes.Buffer
-
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqMsg)
-	if err == nil {
-		// TODO: Handle
-	} else {
-		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
-		errMsg.Destination = msg.Source
-		errMsg.Send(star.ConnectID{})
-	}
-}
-
-func AgentProcessFileUpload(msg *star.Message) {
-	var reqMsg star.MessageFileUpload
-	var b bytes.Buffer
-
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&reqMsg)
-	if err == nil {
-		// TODO: Handle
 	} else {
 		errMsg := star.NewMessageError(star.MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
 		errMsg.Destination = msg.Source
@@ -310,3 +266,25 @@ func AgentProcessTerminateRequest(msg *star.Message) {
 	syncMsg := star.NewMessageSyncResponse()
 	syncMsg.Send(star.ConnectID{})
 }
+
+func AgentProcessShellRequest(msg *star.Message) {
+
+}
+
+func AgentProcessDebugRequest(msg *star.Message) {
+
+}
+
+func AgentProcessFileServerRequest(msg *star.Message) {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+func AgentProcessStream(stream *star.Stream) {
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////

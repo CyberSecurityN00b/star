@@ -12,7 +12,6 @@ type Connection interface {
 	Handle()
 	MessageDuration() time.Duration
 	Send(msg Message) (err error)
-	StreamChunkSize() uint
 	Close()
 }
 

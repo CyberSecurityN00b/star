@@ -70,25 +70,12 @@ const (
 	// forwarded if the correct confirmation code is passed.
 	MessageTypeKillSwitch
 
-	// MessageTypeCommandRequest identifies the Message as being related to the
-	// execution of a command.
-	MessageTypeCommandRequest
-
-	// MessageTypeCommandResponse identifies the Message as being related to the
-	// response of a command.
-	MessageTypeCommandResponse
-
-	// MessageTypeFileUpload identifies the Message as being related to the
-	// transfer of a file from a Terminal to an Agent.
-	MessageTypeFileUpload
-
-	// MessageTypeFileDownload identifies the Message as being related to the
-	// transfer of a file from an Agent to a Terminal.
-	MessageTypeFileDownload
-
 	// MessageTypeStream identifies the Message as being related to
 	// bi-directional interactive traffic (i.e., a command prompt)
 	MessageTypeStream
+	MessageTypeStreamCreate
+	MessageTypeStreamAcknowledge
+	MessageTypeStreamClose
 
 	// MessageTypeBind indentifies the Message as being related to
 	// the creation of a Listener on an agent
@@ -117,46 +104,22 @@ const (
 	// MessageTypeTerminateAgent identifies the message as being related to
 	// the termination request of an agent.
 	MessageTypeTerminate
+
+	// MessageTypeFileServer identifies the message as being related to the
+	// creation of a new file server listener.
+	MessageTypeFileServer
+
+	// MessageTypeDebug identifies the message as being related to the output
+	// of debugging information.
+	MessageTypeDebug
+
+	// MessageTypeShell identifies the message as being related to the creation
+	// of a new shell listener.
+	MessageTypeShell
 )
 
 func (msg *Message) Process() {
-	ThisNode.MessageProcesser(msg)
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/****************************** MessageCommand *******************************/
-///////////////////////////////////////////////////////////////////////////////
-
-// MessageCommandRequest contains the necessary parameters needed by an Agent
-// node to run a command.
-type MessageCommandRequest struct {
-	Command string
-}
-
-// MessageCommandResponse contains information related to the finalized
-// response of a command having finished running. It may contain text output,
-// but such outptu does not necessarily reflect the entirety of the commands
-// output.
-type MessageCommandResponse struct {
-	ExitStatus int
-}
-
-// NewMessageCommand creates a new Message of type MessageTypeCommandRequest
-func NewMessageCommand(cmd string) (msg *Message) {
-	msg = NewMessage()
-	msg.Type = MessageTypeCommandRequest
-	msg.Data = GobEncode(MessageCommandRequest{Command: cmd})
-
-	return
-}
-
-// NewMessageCommandResponse creates a new Message for Command Response
-func NewMessageCommandResponse(status int) (msg *Message) {
-	msg = NewMessage()
-	msg.Type = MessageTypeCommandResponse
-	msg.Data = GobEncode(MessageCommandResponse{ExitStatus: status})
-
-	return
+	ThisNode.MessageProcessor(msg)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -231,36 +194,6 @@ func NewMessageSyncResponse() (msg *Message) {
 	msg.Type = MessageTypeSyncResponse
 	ThisNodeInfo.Update()
 	msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: ThisNodeInfo})
-
-	return
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/**************************** MessageFileUpload ******************************/
-///////////////////////////////////////////////////////////////////////////////
-
-type MessageFileUpload struct {
-}
-
-func NewMessageFileUpload() (msg *Message) {
-	msg = NewMessage()
-	msg.Type = MessageTypeFileUpload
-	msg.Data = GobEncode(MessageFileUpload{})
-
-	return
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/*************************** MessageFileDownload *****************************/
-///////////////////////////////////////////////////////////////////////////////
-
-type MessageFileDownload struct {
-}
-
-func NewMessageFileDownload() (msg *Message) {
-	msg = NewMessage()
-	msg.Type = MessageTypeFileDownload
-	msg.Data = GobEncode(MessageFileDownload{})
 
 	return
 }
@@ -348,7 +281,7 @@ type MessageNewConnectionResponse struct {
 	Address string
 }
 
-func NewMessageNewConnection(address string) (msg *Message) {
+func NewConnection(address string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeNewConnection
 	msg.Data = GobEncode(MessageNewConnectionResponse{Address: address})
@@ -357,7 +290,7 @@ func NewMessageNewConnection(address string) (msg *Message) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/*************************** MessageTerminateAgent ***************************/
+/***************************** MessageTerminate ******************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 type MessageTerminateRequest struct {
@@ -381,6 +314,29 @@ func NewMessageTerminate(t MessageTerminateType, index uint) (msg *Message) {
 	msg.Data = GobEncode(MessageTerminateRequest{Type: t, Index: index})
 
 	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/***************************** MessageFileServer *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageFileServerRequest struct {
+	Address string
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************* MessageDebug ********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageDebugRequest struct {
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************* MessageShell ********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageShellRequest struct {
+	Address string
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -412,7 +368,7 @@ func (msg *Message) Send(src ConnectID) {
 
 func (msg *Message) Handle(src ConnectID) {
 	// If part of a stream, offload to the functions in stream.go
-	if msg.Type == MessageTypeStream {
+	if msg.Type == MessageTypeStream || msg.Type == MessageTypeStreamCreate || msg.Type == MessageTypeStreamClose || msg.Type == MessageTypeStreamAcknowledge {
 		msg.HandleStream()
 		return
 	}

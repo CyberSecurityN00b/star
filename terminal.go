@@ -54,7 +54,8 @@ func showWelcomeText() {
 func initTerminal() {
 	star.STARCoreSetup()
 	star.ThisNode = star.NewNode(star.NodeTypeTerminal)
-	star.ThisNode.MessageProcesser = TerminalProcessMessage
+	star.ThisNode.MessageProcessor = TerminalProcessMessage
+	star.ThisNode.StreamProcessor = TerminalProcessStream
 
 	star.ThisNodeInfo.Setup()
 
@@ -74,13 +75,16 @@ func initTerminal() {
 
 	// Setup settings
 	terminalSettings = make(map[string]terminalSetting)
-	terminalSettings["history.tracklength"] = terminalSetting{100, "The number of commands to track in the history."}
-	terminalSettings["history.displaylength"] = terminalSetting{10, "The number of commands to show when displaying history (doesn't include `:h all`)."}
+	terminalSettings["history.tracklength"] = terminalSetting{int64(100), "The number of commands to track in the history."}
+	terminalSettings["history.displaylength"] = terminalSetting{int64(10), "The number of commands to show when displaying history (doesn't include `:h all`)."}
 	terminalSettings["display.ansicolor"] = terminalSetting{true, "Use ANSI color codes in STAR output."}
 	terminalSettings["display.timestamp"] = terminalSetting{"2006.01.02-15.04.05", "GoLang timestamp format for logs/notices."}
-	terminalSettings["sync.minutes"] = terminalSetting{5, "Send a Synchronization Request to all agents every N minutes. (Changes take effect at the next ticker synchronization; values less than 1 are ignored.)"}
+	terminalSettings["sync.minutes"] = terminalSetting{int64(5), "Send a Synchronization Request to all agents every N minutes. (Changes take effect at the next ticker synchronization; values less than 1 are ignored.)"}
 	terminalSettings["sync.mute"] = terminalSetting{true, "Mutes Synchronization Responses from agents. (Not applicable to errors.)"}
 	terminalSettings["sync.muteerrors"] = terminalSetting{false, "Mutes Synchronization Response errors from agents. (Not applicable to responses.)"}
+	terminalSettings["info.showenv"] = terminalSetting{false, "Shows environment variables in agent information."}
+	terminalSettings["info.showos"] = terminalSetting{true, "Shows OS information in agent information."}
+	terminalSettings["info.showinterfaces"] = terminalSetting{true, "Shows network interfaces in agent information."}
 
 	// Setup history
 	historyItems = make(map[uint]historyItem)
@@ -93,14 +97,14 @@ func initTerminal() {
 	AgentTrackerUpdateInfo(&star.ThisNode, &star.ThisNodeInfo)
 
 	// Synchronization ticker
-	tickerSynchronization = time.NewTicker(time.Duration(terminalSettings["sync.minutes"].Data.(int)) * time.Minute)
+	tickerSynchronization = time.NewTicker(time.Duration(terminalSettings["sync.minutes"].Data.(int64)) * time.Minute)
 	go func() {
 		for {
 			select {
 			case <-tickerSynchronization.C:
 				TerminalSynchronize()
 
-				next := terminalSettings["sync.minutes"].Data.(int)
+				next := terminalSettings["sync.minutes"].Data.(int64)
 				if next >= 1 {
 					tickerSynchronization.Reset(time.Duration(next) * time.Minute)
 				}
@@ -132,7 +136,7 @@ func handleTerminalInput(input string) {
 	// Add to history
 	n := activeNode
 	s := activeStream
-	if len(input) > 2 {
+	if len(input) >= 2 {
 		if input[0] == ':' && input[1] != ':' {
 			n = star.ThisNode.ID
 		}
@@ -203,17 +207,22 @@ func handleTerminalInput(input string) {
 		}
 	case ":d", ":down", ":download":
 		terminalCommandDownload()
+	case ":debug":
+		terminalCommandDebug()
+	case ":f", ":file", ":fileserver":
+		terminalCommandFileServer()
 	case ":h", ":history":
 		if len(inputs) == 2 {
 			if inputs[1] == "all" {
 				terminalCommandHistory(true, activeNode, activeStream)
-			}
-			node, ok := AgentTrackerGetInfoByFriendly(inputs[1])
-			if !ok {
-				terminalCommandList("all")
-				printError(fmt.Sprintf("%s is not a valid identifier, use one of the above!", inputs[1]))
 			} else {
-				terminalCommandHistory(false, node.Node.ID, activeStream)
+				node, ok := AgentTrackerGetInfoByFriendly(inputs[1])
+				if !ok {
+					terminalCommandList("all")
+					printError(fmt.Sprintf("%s is not a valid identifier, use one of the above!", inputs[1]))
+				} else {
+					terminalCommandHistory(false, node.Node.ID, activeStream)
+				}
 			}
 		} else {
 			terminalCommandHistory(false, activeNode, activeStream)
@@ -233,7 +242,13 @@ func handleTerminalInput(input string) {
 			terminalCommandHelp(":j")
 		}
 	case ":k", ":kill", ":killswitch":
-		terminalCommandKillSwitch()
+		if len(inputs) == 1 {
+			terminalCommandKillSwitch("")
+		} else if len(inputs) == 2 {
+			terminalCommandKillSwitch(inputs[1])
+		} else {
+			terminalCommandHelp(":k")
+		}
 	case ":l", ":list":
 		if len(inputs) >= 2 {
 			terminalCommandList(inputs[1])
@@ -248,10 +263,10 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandSet(inputs[1], star.StringifySubarray(inputs, 2, len(inputs)))
 		}
+	case ":shell":
+		terminalCommandShell()
 	case ":sync":
 		TerminalSynchronize()
-	case ":r", ":run", ":runfile":
-		terminalCommandRunFile()
 	case ":t", ":terminate":
 		if len(inputs) == 1 {
 			terminalCommandTerminate("")
@@ -339,42 +354,60 @@ func terminalCommandHelp(topic string) {
 	case ":?", ":help":
 		fmt.Println("--> COMMAND HELP FOR: :?, :help")
 		fmt.Println()
-		fmt.Println("USAGE: :?, :? <cmd>, :? <topic>")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t:? :bind")
-		fmt.Println("\t:? library")
+		fmt.Println("USAGE:")
+		fmt.Println("\t:?          -  Shows help overview.")
+		fmt.Println("\t:? <cmd>    -  Shows help for a specific command.")
+		fmt.Println("\t:? <topic>  -  Shows help for a topic (see `:?`).")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUsing `:?` by itself prints a list of STAR commands and topics. Specifying a command or topic provides more detailed help specific to that command or topic.")
 	case ":b", ":bind":
 		fmt.Println("--> COMMAND HELP FOR: :b, :bind")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:b <addr>          -  Creates a listener on the local terminal at <addr>.")
+		fmt.Println("\t:b :4444           -  Creates a listener on the local terminal on port 4444.")
+		fmt.Println("\t:b <agent> <addr>  -  Creates a listener on <agent> at <addr>.")
+		fmt.Println("\t:b agent001 :4444")
+		fmt.Println("\t:b agent001 10.10.10.10:4444")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:b` to create a TCP TLS listener for other STAR node to connect to. <addr> uses the Golang network address format.")
 	case ":c", ":connect":
 		fmt.Println("--> COMMAND HELP FOR: :c, :connect")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:c <addr>            -  Connects the terminal to a STAR node at <addr>.")
+		fmt.Println("\t:c 10.10.10.10:4444  -  Connects the terminal to a STAR node at 10.10.10.10:4444")
+		fmt.Println("\t:c <agent> <addr>    -  Connects <agent> to a STAR node at <addr>.")
+		fmt.Println("\t:c agent002 10.10.10.10:4444")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:c` to connect to a TCP TLS listener of another STAR node. <addr> uses the Golang network address format.")
 	case ":d", ":down", ":download":
 		fmt.Println("--> COMMAND HELP FOR: :d, :down, :download")
 		fmt.Println()
 		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+	case ":debug":
+		fmt.Println("--> COMMAND HELP FOR: :debug")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:debug")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\tForces nodes to show debugging information. Information subject to change. Command subject to not work at all.")
+	case ":f", ":file", ":fileserver":
+		fmt.Println("--> COMMAND HELP FOR: :f, :file, :fileserver")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
 		fmt.Println("\t<<<>>>")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
@@ -382,69 +415,66 @@ func terminalCommandHelp(topic string) {
 	case ":h", ":history":
 		fmt.Println("--> COMMAND HELP FOR: :h, :history")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:h      -  Shows history for active STAR node.")
+		fmt.Println("\t:h all  -  Shows history for all nodes.")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\tUse `:h` to view the timestamped command history.")
 	case ":i", ":info", ":information":
 		fmt.Println("--> COMMAND HELP FOR: :i, :info, :information")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:i          -  Shows STAR nodes connected to constellation.")
+		fmt.Println("\t:i <agent>  -  Shows information specific to <agent.")
+		fmt.Println("\t:i agent001")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:i` to view information pertaining to a STAR node, to include network interfaces, environment variables, etc.")
 	case ":j", ":jump":
 		fmt.Println("--> COMMAND HELP FOR: :j, :jump")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:j <agent>           -  Change the active/focused STAR node to <agent>.")
+		fmt.Println("\t:j <agent>:<stream>  -  Change the active/focused STAR node to specific stream.")
+		fmt.Println("\t:j agent001")
+		fmt.Println("\t:j agent003:stream001")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:j` to jump to another agent or stream. When jumping to another agent, any commands passed to the node will create a new stream and that stream will receive the focus. When jumping to an <agent>:<stream>, such as going to a shell or a previous, still-running command, that stream will receive the input/commands passed.")
 	case ":k", ":kill", ":killswitch":
 		fmt.Println("--> COMMAND HELP FOR: :k, :kill, :killswitch")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:k  - Terminates constellation and attempts cleanup (cleanup not yet implemented).")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:k` as a panic button or when you're done for the night. Terminates all agents, commands, and shells.")
 	case ":l", ":list":
 		fmt.Println("--> COMMAND HELP FOR: :l, :list")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:l          -  Lists the agents and terminals in the constellation.")
+		fmt.Println("\t:l <agent>  -  Lists the connections, listeners, and streams for an agent.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
-	case ":r", ":run", ":runfile":
-		fmt.Println("--> COMMAND HELP FOR: :r, :run, :runfile")
-		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
-		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
-		fmt.Println()
-		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:l` to list agents, connections, listeners, shells, streams, etc. Also shows how long it has been since an agent has synced.")
 	case ":s", ":set", ":setting", ":settings":
 		fmt.Println("--> COMMAND HELP FOR: :s, :set, :setting, :settings")
 		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:s                    -  Lists all the settings available to modify.")
+		fmt.Println("\t:s <setting>          -  Shows the value of the setting, and its description.")
+		fmt.Println("\t:s <setting> <value>  -  Changes the value of the setting.")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\tUse `:s` to modify properties of the STAR terminal and constellation.")
+	case ":shell":
+		fmt.Println("--> COMMAND HELP FOR: :shell")
+		fmt.Println()
 		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
 		fmt.Println("\t<<<>>>")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
@@ -452,32 +482,29 @@ func terminalCommandHelp(topic string) {
 	case ":sync":
 		fmt.Println("--> COMMAND HELP FOR: :sync")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:sync  -  Forces synchronization of agents.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:sync` to force a synchronization of agents. This is beneficial to update information/lists, and share with agents any terminal changes (files, passwords, etc.).")
 	case ":t", ":terminate":
 		fmt.Println("--> COMMAND HELP FOR: :t, :terminate")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:t <agent>               -  Terminates an agent.")
+		fmt.Println("\t:t <agent>:<connection>  -  Terminates an existing connection on an agent (careful!).")
+		fmt.Println("\t:t <agent>:<listener>    -  Terminates a listener on an agent.")
+		fmt.Println("\t:t <agent>:<stream>       -  Terminates a stream on an agent.")
+		fmt.Println("\t:t agent001:listener002")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:t` to terminate agents, connctions, listeners, and streams. Use `:l <agent>` for a listing of identifiers that can be used for that agent.")
 	case ":u", ":up", ":upload":
 		fmt.Println("--> COMMAND HELP FOR: :u, :up, :upload")
 		fmt.Println()
 		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("EXAMPLES:")
 		fmt.Println("\t<<<>>>")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
@@ -486,20 +513,20 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("--> COMMAND HELP FOR: :q, :quit")
 		fmt.Println()
 		fmt.Println()
-		fmt.Println("USAGE: :q")
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:q  - Quits the terminal.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tQuits the terminal. Does *NOT* quit any agents.")
 	case "::":
 		fmt.Println("--> COMMAND HELP FOR: ::")
 		fmt.Println()
-		fmt.Println("USAGE: :: <command to pass to agent>")
-		fmt.Println("EXAMPLES:")
+		fmt.Println("USAGE:")
 		fmt.Println("\t:: :i")
 		fmt.Println("\t:: /bin/bash")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\tUse `:: <cmd>` to pass a command to an agent and not have it interpreted by the terminal. This is useful for scenarios where you have 'nested terminals' or are interacting with another tool which requires starting a command string with the ':' character. You do *NOT* need to use :: to pass a command to the terminal if it doesn't start with the ':' character.")
+		fmt.Println("\tUse `:: <cmd>` to pass a command to an agent and not have it interpreted by the terminal. This is useful for scenarios where you have 'nested terminals' or are interacting with another tool which requires starting a command string with the ':' character. You do *NOT* need to use :: to pass a command to the terminal if it doesn't start with the ':' character. Only works for the active agent/stream.")
 	case "agent", "agents":
 		fmt.Println("--> ABOUT AGENTS")
 		fmt.Println()
@@ -514,6 +541,10 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("TODO: Write this section when STAR is functional.")
 	case "library", "libraries":
 		fmt.Println("--> ABOUT LIBRARIES")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when STAR is functional.")
+	case "shell", "shells":
+		fmt.Println("--> ABOUT SHELLS")
 		fmt.Println()
 		fmt.Println("TODO: Write this section when STAR is functional.")
 	case "terminal", "terminals":
@@ -536,13 +567,15 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":b :bind \t Creates a STAR listener and binds it.")
 		fmt.Fprintln(w, ":c :connect \t Connects to a STAR listener.")
 		fmt.Fprintln(w, ":d :down :download \t Downloads a file from the terminal to the agent.")
+		fmt.Fprintln(w, ":debug \t Causes agents to print debug information.")
+		fmt.Fprintln(w, ":f :file :fileserver \t Creates an HTTP file server listener.")
 		fmt.Fprintln(w, ":h :history \t Displays the command history for an agent.")
 		fmt.Fprintln(w, ":i :info :information \t Shows information for a specific agent.")
 		fmt.Fprintln(w, ":j :jump \t Jump (change focus) to another agent.")
 		fmt.Fprintln(w, ":k :kill :killswitch \t Panic button! Destroy and cleanup constellation.")
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
-		fmt.Fprintln(w, ":r :run :runfile \t Runs a prepared file of commands.")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
+		fmt.Fprintln(w, ":shell \t Creates a STAR Shell listener and binds it.")
 		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
 		fmt.Fprintln(w, ":t :terminate \t Terminates an agent, connection, or command.")
 		fmt.Fprintln(w, ":u :up :upload \t Uploads a file from the agent to the terminal.")
@@ -557,6 +590,7 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("\tconnections")
 		fmt.Println("\tconstellation")
 		fmt.Println("\tlibrary")
+		fmt.Println("\tshells")
 		fmt.Println("\tterminal")
 		w.Flush()
 	}
@@ -632,8 +666,13 @@ func terminalCommandHistory(all bool, node star.NodeID, stream star.StreamID) (e
 	}
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 
+	max := int(terminalSettings["history.displaylength"].Data.(int64))
+	if !all && len(keys) > max {
+		keys = keys[len(keys)-max : len(keys)]
+	}
+
 	for _, k := range keys {
-		fmt.Fprintln(w, selectHistoryItems[k].Timestamp.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", k, "\t", selectHistoryItems[k].String)
+		fmt.Fprintln(w, selectHistoryItems[k].Timestamp.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", k, "\t", FriendlyAgentName(selectHistoryItems[k].Node, selectHistoryItems[k].Stream), "\t", selectHistoryItems[k].String)
 	}
 	w.Flush()
 	return
@@ -647,21 +686,45 @@ func terminalCommandInformation(context string) (err error) {
 		terminalCommandList("all")
 	} else {
 		fmt.Fprintln(w, "NODE.ID: ", "\t", agent.Node.ID)
-		fmt.Fprintln(w, "OS.EGID: ", "\t", agent.Info.OS_egid)
-		fmt.Fprintln(w, "OS.EUID: ", "\t", agent.Info.OS_euid)
-		fmt.Fprintln(w, "OS.GID: ", "\t", agent.Info.OS_gid)
-		fmt.Fprintln(w, "OS.GROUPS: ", "\t", agent.Info.OS_groups)
-		fmt.Fprintln(w, "OS.PAGESIZE: ", "\t", agent.Info.OS_pagesize)
-		fmt.Fprintln(w, "OS.PID: ", "\t", agent.Info.OS_pid)
-		fmt.Fprintln(w, "OS.PPID: ", "\t", agent.Info.OS_ppid)
-		fmt.Fprintln(w, "OS.UID: ", "\t", agent.Info.OS_uid)
-		fmt.Fprintln(w, "OS.DIR: ", "\t", agent.Info.OS_workingdir)
-		fmt.Fprintln(w, "OS.HOSTNAME: ", "\t", agent.Info.OS_hostname)
+		if terminalSettings["info.showos"].Data.(bool) {
+			fmt.Fprintln(w, "OS.EGID: ", "\t", agent.Info.OS_egid)
+			fmt.Fprintln(w, "OS.EUID: ", "\t", agent.Info.OS_euid)
+			fmt.Fprintln(w, "OS.GID: ", "\t", agent.Info.OS_gid)
+			fmt.Fprintln(w, "OS.GROUPS: ", "\t", agent.Info.OS_groups)
+			fmt.Fprintln(w, "OS.PAGESIZE: ", "\t", agent.Info.OS_pagesize)
+			fmt.Fprintln(w, "OS.PID: ", "\t", agent.Info.OS_pid)
+			fmt.Fprintln(w, "OS.PPID: ", "\t", agent.Info.OS_ppid)
+			fmt.Fprintln(w, "OS.UID: ", "\t", agent.Info.OS_uid)
+			fmt.Fprintln(w, "OS.DIR: ", "\t", agent.Info.OS_workingdir)
+			fmt.Fprintln(w, "OS.HOSTNAME: ", "\t", agent.Info.OS_hostname)
+		}
 		w.Flush()
-		fmt.Println()
-		fmt.Println("ENVIRONMENT VARIABLES:")
-		for _, e := range agent.Info.OS_environ {
-			fmt.Println("\t", e)
+
+		if terminalSettings["info.showenv"].Data.(bool) {
+			fmt.Println()
+			fmt.Println("ENVIRONMENT VARIABLES:")
+			for _, e := range agent.Info.OS_environ {
+				fmt.Println("\t", e)
+			}
+		}
+
+		if terminalSettings["info.showinterfaces"].Data.(bool) {
+			fmt.Println()
+			fmt.Println("NETWORK INTERFACES WITH ADDRESSES:")
+			fmt.Println("    ----------------------------------------")
+			for _, e := range agent.Info.Interfaces {
+				addrs, err := e.Addrs()
+				if err == nil && len(addrs) > 1 {
+					fmt.Printf("    NAME: %s\n", e.Name)
+					fmt.Printf("    MAC:  %s\n", e.HardwareAddr.String())
+
+					fmt.Printf("    ADDRESSES:\n")
+					for _, a := range addrs {
+						fmt.Printf("        %s\n", a.String())
+					}
+					fmt.Println("    ----------------------------------------")
+				}
+			}
 		}
 	}
 	return
@@ -699,9 +762,13 @@ func terminalCommandJump(context string) (err error) {
 	return
 }
 
-func terminalCommandKillSwitch() (err error) {
-	killMsg := star.NewMessageKillSwitch()
-	killMsg.Send(star.ConnectID{})
+func terminalCommandKillSwitch(confirm string) (err error) {
+	if confirm == "confirm" {
+		killMsg := star.NewMessageKillSwitch()
+		killMsg.Send(star.ConnectID{})
+	} else {
+		printNotice("Killswitch will terminate the constellation and perform cleanup! This is irreversable! Type `:k confirm` to confirm this is what you want!")
+	}
 	return
 }
 
@@ -722,7 +789,7 @@ func terminalCommandList(context string) (err error) {
 					focus = ANSIColorize("CURRENT FOCUS (STREAM)", ANSIColor_Focus)
 				}
 			}
-			fmt.Fprintln(w, "    ", a.FriendlyName, "\t", a.Info.OS_hostname, "\t", focus, "\t", fmt.Sprintf("Last synced %0.1f minutes ago", time.Since(a.LastSynced).Minutes()))
+			fmt.Fprintln(w, "    ", a.FriendlyName, "\t", a.Info.OS_hostname, "\t", focus, "\t", fmt.Sprintf("%0.1f minutes ago", time.Since(a.LastSynced).Minutes()))
 		}
 		w.Flush()
 	} else {
@@ -759,6 +826,7 @@ func terminalCommandList(context string) (err error) {
 			fmt.Println()
 
 			fmt.Println("Shells:")
+			//Sort then print
 			keys = make([]uint, len(agent.Info.ShellIDs))
 			ki = 0
 			for k := range agent.Info.ShellIDs {
@@ -789,10 +857,6 @@ func terminalCommandList(context string) (err error) {
 					streamtype = "Upload"
 				case star.StreamTypeFileDownload:
 					streamtype = "Download"
-				case star.StreamTypeShell:
-					streamtype = "Shell"
-				case star.StreamTypeAgentDownload:
-					streamtype = "Agent"
 				default:
 					streamtype = "Unknown"
 				}
@@ -812,11 +876,6 @@ func terminalCommandList(context string) (err error) {
 		}
 	}
 
-	return
-}
-
-func terminalCommandRunFile() (err error) {
-	printError("Runscripts are not yet implemented!")
 	return
 }
 
@@ -890,30 +949,25 @@ func terminalCommandTerminate(context string) (err error) {
 		} else if len(identifiers) == 2 {
 			match := regexp.MustCompile(`^(conn|listener|shell|stream)(\d+)$`).FindStringSubmatch(identifiers[1])
 			if len(match) == 3 {
+				var termMsg *star.Message
 				index, _ := strconv.ParseUint(match[2], 10, 64)
 				switch match[1] {
 				case "conn":
-					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeConnection, uint(index))
-					termMsg.Destination = agent.Node.ID
-					termMsg.Send(star.ConnectID{})
+					termMsg = star.NewMessageTerminate(star.MessageTerminateTypeConnection, uint(index))
 				case "listener":
-					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeListener, uint(index))
-					termMsg.Destination = agent.Node.ID
-					termMsg.Send(star.ConnectID{})
-				case "shell":
-					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeShell, uint(index))
-					termMsg.Destination = agent.Node.ID
-					termMsg.Send(star.ConnectID{})
+					termMsg = star.NewMessageTerminate(star.MessageTerminateTypeListener, uint(index))
 				case "stream":
-					termMsg := star.NewMessageTerminate(star.MessageTerminateTypeStream, uint(index))
-					termMsg.Destination = agent.Node.ID
-					termMsg.Send(star.ConnectID{})
+					termMsg = star.NewMessageTerminate(star.MessageTerminateTypeStream, uint(index))
+				case "shell":
+					termMsg = star.NewMessageTerminate(star.MessageTerminateTypeShell, uint(index))
 				default:
 					// Shouldn't ever reach here, but, uh, oh well.
 					terminalCommandList(identifiers[0])
 					printError(fmt.Sprintf("%s has an invalid sub-identifier! Must be one of the ones listed above!", context))
 					return
 				}
+				termMsg.Destination = agent.Node.ID
+				termMsg.Send(star.ConnectID{})
 			} else {
 				terminalCommandList(identifiers[0])
 				printError(fmt.Sprintf("%s has an invalid sub-identifier! Must be one of the ones listed above!", context))
@@ -945,8 +999,54 @@ func terminalCommandQuit(err error, errmsg string) {
 }
 
 func terminalCommandSendCommand(cmd string) (err error) {
-	printInfo("You attempted to send: " + cmd)
-	printError("Sending commands is not yet implemented.")
+	if activeNode.IsBroadcastNodeID() {
+		if len(agentFriendlyTracker) > 1 {
+			terminalCommandList("all")
+			printError("Must have an active/focused node to send commands! Change focus to one of the above with `:j`")
+		} else {
+			printError("Must have an active/focused node to send commands! Connect the terminal to an agent first!")
+		}
+	} else if activeNode == star.ThisNode.ID {
+		if len(agentFriendlyTracker) > 1 {
+			terminalCommandList("all")
+			printError("Cannot send commands to the terminal! Change focus to one of the above with `:j`")
+		} else {
+			printError("Cannot send commands to the terminal! Connect the terminal to an agent first!")
+		}
+	} else {
+		if activeStream.IsEmptyStreamID() {
+			// New stream!
+			meta := star.NewStreamMetaCommand(activeNode, cmd, func(data []byte) {
+				fmt.Printf("%s\n", data)
+			})
+			activeStream = meta.ID
+			printInfo(fmt.Sprintf("New command stream, changing active stream."))
+		} else {
+			meta, ok := star.GetActiveStream(activeStream)
+			if ok {
+				meta.Write([]byte(cmd + "\n"))
+			} else {
+				activeStream = star.StreamID{}
+				printError(fmt.Sprintf("Invalid command stream, resetting active stream."))
+				printError(fmt.Sprintf("`%s` not sent to %s as a precaution. Resend if appropriate.", cmd, FriendlyAgentName(activeNode, star.StreamID{})))
+			}
+		}
+	}
+	return
+}
+
+func terminalCommandShell() {
+	printError("Creating shell listeners is not yet implemented.")
+	return
+}
+
+func terminalCommandDebug() {
+	printError("Debug is not yet implemented.")
+	return
+}
+
+func terminalCommandFileServer() {
+	printError("Creating file servers is not yet implemented.")
 	return
 }
 
@@ -954,8 +1054,6 @@ func terminalCommandSendCommand(cmd string) (err error) {
 
 func TerminalProcessMessage(msg *star.Message) {
 	switch msg.Type {
-	case star.MessageTypeCommandResponse:
-		TerminalProcessCommandResponse(msg)
 	case star.MessageTypeError:
 		TerminalProcessMessageError(msg)
 	case star.MessageTypeSyncResponse:
@@ -969,19 +1067,6 @@ func TerminalProcessMessage(msg *star.Message) {
 	}
 }
 
-func TerminalProcessCommandResponse(msg *star.Message) {
-	var resMsg star.MessageCommandResponse
-	var b bytes.Buffer
-
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resMsg)
-	if err == nil {
-		// TODO: Handle Command Response
-	} else {
-		printError(fmt.Sprintf("%s attempted to report the completion of a command, but there was an error decoding the data.", FriendlyAgentName(msg)))
-	}
-}
-
 func TerminalProcessMessageError(msg *star.Message) {
 	var errmsg star.MessageErrorResponse
 	var b bytes.Buffer
@@ -991,25 +1076,25 @@ func TerminalProcessMessageError(msg *star.Message) {
 	if err == nil {
 		switch errmsg.Type {
 		case star.MessageErrorResponseTypeX509KeyPair:
-			printError(fmt.Sprintf("%s has reported an error with the creation of the X509 Key pair. Context: %s", FriendlyAgentName(msg), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported an error with the creation of the X509 Key pair. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 		case star.MessageErrorResponseTypeConnectionLost:
-			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the connection with %s.", FriendlyAgentName(msg), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 		case star.MessageErrorResponseTypeBindDropped:
-			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the listening bind on %s", FriendlyAgentName(msg), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the listening bind on %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 		case star.MessageErrorResponseTypeGobDecodeError:
-			printError(fmt.Sprintf("%s has reported an error with attempting to gob decode a message of type %s.", FriendlyAgentName(msg), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported an error with attempting to gob decode a message of type %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 		case star.MessageErrorResponseTypeAgentExitSignal:
-			printNotice(fmt.Sprintf("%s has reported that it was terminated with the signal interrupt %s.", FriendlyAgentName(msg), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it was terminated with the signal interrupt %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 			AgentTrackerRemoveInfo(msg.Source)
 		case star.MessageErrorResponseTypeUnsupportedConnectorType:
-			printError(fmt.Sprintf("%s has reported that an unsupported connector type was specified. Context: %s", FriendlyAgentName(msg), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported that an unsupported connector type was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 		case star.MessageErrorResponseTypeInvalidTerminationIndex:
-			printError(fmt.Sprintf("%s has reported that an invalid termination index was specified. Context: %s", FriendlyAgentName(msg), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported that an invalid termination index was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 		default:
-			printError(fmt.Sprintf("%s has reported an unknown error. Context: %s", FriendlyAgentName(msg), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported an unknown error. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
 		}
 	} else {
-		printError(fmt.Sprintf("% attempted to report an error, but there was another error when decoding the data.", FriendlyAgentName(msg)))
+		printError(fmt.Sprintf("% attempted to report an error, but there was another error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 }
 
@@ -1023,11 +1108,11 @@ func TerminalProcessSyncResponse(msg *star.Message) {
 		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
 
 		if !terminalSettings["sync.mute"].Data.(bool) {
-			printInfo(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg)))
+			printInfo(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg.Source, star.StreamID{})))
 		}
 	} else {
 		if !terminalSettings["sync.muteerrors"].Data.(bool) {
-			printError(fmt.Sprintf("%s attempted to report a synchronization response, but there was an error decoding the data.", FriendlyAgentName(msg)))
+			printError(fmt.Sprintf("%s attempted to report a synchronization response, but there was an error decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 		}
 	}
 }
@@ -1039,9 +1124,9 @@ func TerminalProcessMessageNewBind(msg *star.Message) {
 	b.Write(msg.Data)
 	err := gob.NewDecoder(&b).Decode(&resMsg)
 	if err == nil {
-		printInfo(fmt.Sprintf("%s has reported a new bind/listener on %s.", FriendlyAgentName(msg), resMsg.Address))
+		printInfo(fmt.Sprintf("%s has reported a new bind/listener on %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
 	} else {
-		printError(fmt.Sprintf("%s attempted to report a new bind/listener, but there was an error when decoding the data.", FriendlyAgentName(msg)))
+		printError(fmt.Sprintf("%s attempted to report a new bind/listener, but there was an error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 
 	// Resynchronize
@@ -1055,9 +1140,9 @@ func TerminalProcessMessageNewConnection(msg *star.Message) {
 	b.Write(msg.Data)
 	err := gob.NewDecoder(&b).Decode(&resMsg)
 	if err == nil {
-		printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg), resMsg.Address))
+		printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
 	} else {
-		printError(fmt.Sprintf("%s attempted to report a new connection, but there was an error when decoding the data.", FriendlyAgentName(msg)))
+		printError(fmt.Sprintf("%s attempted to report a new connection, but there was an error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 
 	// Resynchronize
@@ -1073,21 +1158,43 @@ func TerminalProcessMessageHello(msg *star.Message) {
 	if err == nil {
 		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
 	} else {
-		printError(fmt.Sprintf("%s attempted to report an initial connection with the constellation, but there was an error when decoding the data.", FriendlyAgentName(msg)))
+		printError(fmt.Sprintf("%s attempted to report an initial connection with the constellation, but there was an error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 }
 
-func FriendlyAgentName(msg *star.Message) string {
-	if msg.Source.IsBroadcastNodeID() {
-		return "An unknown agent"
-	} else if msg.Source == star.ThisNode.ID {
-		return "This terminal"
-	} else {
-		n, ok := agentNodeIDTracker[msg.Source]
-		if ok {
-			return fmt.Sprintf("%s", n.FriendlyName)
+func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
+	if stream.IsEmptyStreamID() {
+		if id.IsBroadcastNodeID() {
+			return "?????"
+		} else if id == star.ThisNode.ID {
+			return "Terminal"
 		} else {
-			return fmt.Sprintf("%s", msg.Source)
+			n, ok := agentNodeIDTracker[id]
+			if ok {
+				return fmt.Sprintf("%s", n.FriendlyName)
+			} else {
+				return fmt.Sprintf("%s", id)
+			}
+		}
+	} else {
+		if id.IsBroadcastNodeID() {
+			return "?????"
+		} else if id == star.ThisNode.ID {
+			// TODO: Change
+			return "Terminal Stream"
+		} else {
+			n, ok := agentNodeIDTracker[id]
+			if ok {
+				// Find stream id
+				for i, _ := range n.Info.StreamIDs {
+					if n.Info.StreamIDs[i] == stream {
+						return fmt.Sprintf("%s:stream%03d[%s]", n.FriendlyName, i, n.Info.StreamInfos[i])
+					}
+				}
+				return fmt.Sprintf("%s:%s", n.FriendlyName, stream)
+			} else {
+				return fmt.Sprintf("%s:%s", id, stream)
+			}
 		}
 	}
 }
@@ -1121,12 +1228,13 @@ func HistoryPush(item historyItem) {
 	historyItems[historyIndex] = item
 
 	// Enforce history.length
-	l, ok := terminalSettings["history.tracklength"].Data.(uint)
+	l, ok := terminalSettings["history.tracklength"].Data.(int64)
 	if ok {
+		l := uint(l)
 		if historyIndex > l && historyIndex > 0 {
 			oldestAllowed := historyIndex - l
 			for i := range historyItems {
-				if i < oldestAllowed {
+				if i <= oldestAllowed {
 					delete(historyItems, i)
 				}
 			}
@@ -1169,7 +1277,7 @@ var agentNodeIDTracker map[star.NodeID]*agentInfo
 var agentTrackerMutex *sync.Mutex
 
 var agentFriendlyNameTracker int
-var shellFriendlyNameCounter int
+var shellFriendlyNameTracker int
 var terminalFriendlyNameCounter int
 var unknownFriendlyNameCounter int
 
@@ -1186,8 +1294,8 @@ func AgentTrackerUpdateInfo(node *star.Node, info *star.NodeInfo) {
 			agentFriendlyNameTracker++
 			name = fmt.Sprintf("agent%03d", agentFriendlyNameTracker)
 		case star.NodeTypeShell:
-			shellFriendlyNameCounter++
-			name = fmt.Sprintf("shell%03d", shellFriendlyNameCounter)
+			shellFriendlyNameTracker++
+			name = fmt.Sprintf("shell%03d", shellFriendlyNameTracker)
 		case star.NodeTypeTerminal:
 			terminalFriendlyNameCounter++
 			name = fmt.Sprintf("term%03d", terminalFriendlyNameCounter)
@@ -1235,3 +1343,8 @@ func AgentTrackerGetInfoByNodeID(id star.NodeID) (ai *agentInfo, ok bool) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+func TerminalProcessStream(stream *star.Stream) {
+
+}

@@ -60,7 +60,7 @@ func (connector *TCP_Connector) Listen() error {
 
 	connector.Listener = &l
 	id := RegisterListener(connector)
-	ThisNodeInfo.AddListener(id, connector.Address)
+	ThisNodeInfo.AddListener(id, fmt.Sprintf("[tcp]%s", connector.Address))
 
 	// Defer cleanup for when listener ends
 	defer func() {
@@ -117,13 +117,10 @@ func (c TCP_Connection) Handle() {
 	}()
 
 	// Notify of new connection
-	msg := NewMessageNewConnection(addr)
+	msg := NewConnection(addr)
 	msg.Send(ConnectID{})
 	ThisNodeInfo.AddConnector(c.ID, addr)
 
-	// If not a proper message, check if it is an HTTP request
-	// If an HTTP request, offload that to the STAR agent download feature
-	// If not an HTTP request, treat like a shell connecting
 	for {
 		msg := &Message{}
 		err := c.Decoder.Decode(&msg)
@@ -143,10 +140,6 @@ func (c TCP_Connection) MessageDuration() (d time.Duration) {
 func (c TCP_Connection) Send(msg Message) (err error) {
 	c.Encoder.Encode(msg)
 	return
-}
-
-func (c TCP_Connection) StreamChunkSize() uint {
-	return 30000
 }
 
 func (c TCP_Connection) Close() {

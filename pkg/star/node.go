@@ -1,8 +1,10 @@
 package star
 
 import (
+	"net"
 	"os"
 	"runtime"
+	"sync"
 )
 
 // The Node type serves as the overarching data structure for tracking STAR nodes.
@@ -10,7 +12,8 @@ type Node struct {
 	ID               NodeID
 	Type             NodeType
 	Neighbors        []NodeID
-	MessageProcesser func(*Message)
+	MessageProcessor func(*Message)
+	StreamProcessor  func(*Stream)
 }
 
 type NodeInfo struct {
@@ -38,6 +41,10 @@ type NodeInfo struct {
 	OS_ppid       int
 	OS_uid        int
 	OS_workingdir string
+
+	Interfaces []net.Interface
+
+	mutex *sync.Mutex
 }
 
 var nodeInfoConnectionIDsCount uint
@@ -93,8 +100,8 @@ const (
 	// NodeTypeAgent identifies the STAR Node as being an Agent Node
 	NodeTypeAgent
 
-	// NodeTypeShell is a psuedonode that is used when connections from
-	// external shells (i.e., netcat) are detected in an listener
+	// NodeTypeShell is a psuedonode that is used when connections to the
+	// shell listener are detected
 	NodeTypeShell
 )
 
@@ -103,6 +110,8 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 
 func (ni *NodeInfo) Setup() {
+	ni.mutex = &sync.Mutex{}
+
 	ni.ConnectionIDs = make(map[uint]ConnectID)
 	ni.ConnectionInfos = make(map[uint]string)
 	ni.ListenerIDs = make(map[uint]ConnectID)
@@ -131,15 +140,23 @@ func (ni *NodeInfo) Update() {
 	ni.OS_uid = os.Getuid()
 	ni.OS_workingdir, _ = os.Getwd()
 	ni.OS_hostname, _ = os.Hostname()
+
+	ni.Interfaces, _ = net.Interfaces()
 }
 
 func (ni *NodeInfo) AddConnector(id ConnectID, info string) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	nodeInfoConnectionIDsCount++
 	ni.ConnectionIDs[nodeInfoConnectionIDsCount] = id
 	ni.ConnectionInfos[nodeInfoConnectionIDsCount] = info
 }
 
 func (ni *NodeInfo) RemoveConnector(id ConnectID) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	for i, c := range ni.ConnectionIDs {
 		if c == id {
 			delete(ni.ConnectionIDs, i)
@@ -149,12 +166,18 @@ func (ni *NodeInfo) RemoveConnector(id ConnectID) {
 }
 
 func (ni *NodeInfo) AddListener(id ConnectID, info string) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	nodeInfoListenerIDsCount++
 	ni.ListenerIDs[nodeInfoListenerIDsCount] = id
 	ni.ListenerInfos[nodeInfoListenerIDsCount] = info
 }
 
 func (ni *NodeInfo) RemoveListener(id ConnectID) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	for i, l := range ni.ListenerIDs {
 		if l == id {
 			delete(ni.ListenerIDs, i)
@@ -164,12 +187,18 @@ func (ni *NodeInfo) RemoveListener(id ConnectID) {
 }
 
 func (ni *NodeInfo) AddShell(id NodeID, info string) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	nodeInfoShellIDsCount++
 	ni.ShellIDs[nodeInfoShellIDsCount] = id
 	ni.ShellInfos[nodeInfoShellIDsCount] = info
 }
 
 func (ni *NodeInfo) RemoveShell(id NodeID) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	for i, s := range ni.ShellIDs {
 		if s == id {
 			delete(ni.ShellIDs, i)
@@ -179,6 +208,9 @@ func (ni *NodeInfo) RemoveShell(id NodeID) {
 }
 
 func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	nodeInfoStreamIDsCount++
 	ni.StreamIDs[nodeInfoStreamIDsCount] = id
 	ni.StreamTypes[nodeInfoStreamIDsCount] = t
@@ -186,6 +218,9 @@ func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string) {
 }
 
 func (ni *NodeInfo) RemoveStream(id StreamID) {
+	ni.mutex.Lock()
+	defer ni.mutex.Unlock()
+
 	for i, s := range ni.StreamIDs {
 		if s == id {
 			delete(ni.StreamIDs, i)
