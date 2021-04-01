@@ -144,6 +144,7 @@ const (
 	MessageErrorResponseTypeUnsupportedConnectorType
 	MessageErrorResponseTypeUnsupportedTerminationType
 	MessageErrorResponseTypeInvalidTerminationIndex
+	MessageErrorResponseTypeCommandEnded
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -354,11 +355,25 @@ func (msg *Message) Send(src ConnectID) {
 	if msg.Destination.IsBroadcastNodeID() || !exists {
 		for conn := range connectionTracker {
 			if conn != src {
-				go connectionTracker[conn].Send(*msg)
+				c, ok := connectionTracker[conn]
+				if ok {
+					go c.Send(*msg)
+				} else {
+					// Just don't worry about it I guess
+				}
 			}
 		}
 	} else {
-		go connectionTracker[dst].Send(*msg)
+		c, ok := connectionTracker[dst]
+		if ok {
+			go c.Send(*msg)
+		} else {
+			// Try try again
+			destinationTrackerMutex.Lock()
+			delete(destinationTracker, msg.Destination)
+			destinationTrackerMutex.Unlock()
+			msg.Send(src)
+		}
 	}
 }
 
@@ -367,28 +382,30 @@ func (msg *Message) Send(src ConnectID) {
 ///////////////////////////////////////////////////////////////////////////////
 
 func (msg *Message) Handle(src ConnectID) {
+	ismsg := false
 	// If part of a stream, offload to the functions in stream.go
 	if msg.Type == MessageTypeStream || msg.Type == MessageTypeStreamCreate || msg.Type == MessageTypeStreamClose || msg.Type == MessageTypeStreamAcknowledge {
-		msg.HandleStream()
-		return
+		ismsg = true
 	}
 
-	// Have we already received this Message before?
-	messageTrackerMutex.Lock()
-	defer messageTrackerMutex.Unlock()
-	if messageTracker[msg.ID] {
-		return
-	}
-
-	// Add the MessageID to the tracker, removing after certain duration
-	connectionTrackerMutex.Lock()
-	messageTracker[msg.ID] = true
-	time.AfterFunc(connectionTracker[src].MessageDuration(), func() {
+	if !ismsg {
+		// Have we already received this Message before?
 		messageTrackerMutex.Lock()
 		defer messageTrackerMutex.Unlock()
-		delete(messageTracker, msg.ID)
-	})
-	connectionTrackerMutex.Unlock()
+		if messageTracker[msg.ID] {
+			return
+		}
+
+		// Add the MessageID to the tracker, removing after certain duration
+		connectionTrackerMutex.Lock()
+		messageTracker[msg.ID] = true
+		time.AfterFunc(connectionTracker[src].MessageDuration(), func() {
+			messageTrackerMutex.Lock()
+			defer messageTrackerMutex.Unlock()
+			delete(messageTracker, msg.ID)
+		})
+		connectionTrackerMutex.Unlock()
+	}
 
 	// Track destination
 	if !src.IsNone() && !msg.Source.IsBroadcastNodeID() {
@@ -401,9 +418,17 @@ func (msg *Message) Handle(src ConnectID) {
 	if msg.Destination.IsBroadcastNodeID() {
 		// Pass it along first and then process
 		go msg.Send(src)
-		go msg.Process()
+		if ismsg {
+			go msg.HandleStream()
+		} else {
+			go msg.Process()
+		}
 	} else if msg.Destination == ThisNode.ID {
-		go msg.Process()
+		if ismsg {
+			go msg.HandleStream()
+		} else {
+			go msg.Process()
+		}
 	} else {
 		go msg.Send(src)
 	}

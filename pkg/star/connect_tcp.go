@@ -40,6 +40,7 @@ func (connector *TCP_Connector) Connect() (err error) {
 	c, err := tls.Dial("tcp", connector.Address, ConnectionConfig)
 	if err != nil {
 		fmt.Println(err.Error())
+		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return
 	}
 
@@ -55,6 +56,7 @@ func (connector *TCP_Connector) Listen() error {
 	l, err := tls.Listen("tcp", connector.Address, ConnectionConfig)
 	if err != nil {
 		fmt.Println(err.Error())
+		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return err
 	}
 
@@ -81,6 +83,7 @@ func (connector *TCP_Connector) Listen() error {
 		c, err := l.Accept()
 		if err != nil {
 			fmt.Println(err.Error())
+			NewMessageError(0, err.Error()).Send(ConnectID{})
 			return err
 		}
 

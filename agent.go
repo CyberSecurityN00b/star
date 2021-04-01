@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/CyberSecurityN00b/star/pkg/star"
@@ -18,7 +17,7 @@ var fs embed.FS
 
 func main() {
 	initAgent()
-	parameterHandlingAgent()
+	star.ParameterHandling()
 
 	// SECURITY RESEARCHER TODO: Configure default connections here
 	star.NewTCPListener(":42069")
@@ -47,7 +46,6 @@ func initAgent() {
 	star.STARCoreSetup()
 	star.ThisNode = star.NewNode(star.NodeTypeAgent)
 	star.ThisNode.MessageProcessor = AgentProcessMessage
-	star.ThisNode.StreamProcessor = AgentProcessStream
 
 	star.ThisNodeInfo.Setup()
 
@@ -66,31 +64,6 @@ func initAgent() {
 	if err != nil {
 		print(err)
 		os.Exit(1)
-	}
-}
-
-// Allows for the creation of listeners (bind) and connections (connect) via
-// command-line arguments.
-func parameterHandlingAgent() {
-	for _, arg := range os.Args[1:] {
-		setup := strings.Split(arg, ":")
-		if setup[0] == "b" || setup[0] == "l" {
-			// [b]ind/[l]istener
-
-			if len(setup) == 2 {
-				star.NewTCPListener(":" + setup[1])
-			} else if len(setup) == 3 {
-				star.NewTCPListener(setup[1] + ":" + setup[2])
-			}
-		} else if setup[0] == "r" || setup[0] == "c" {
-			// [r]everse/[c]onnect
-
-			if len(setup) == 2 {
-				star.NewTCPConnection(":" + setup[1])
-			} else if len(setup) == 3 {
-				star.NewTCPConnection(setup[1] + ":" + setup[2])
-			}
-		}
 	}
 }
 
@@ -243,10 +216,13 @@ func AgentProcessTerminateRequest(msg *star.Message) {
 					star.ThisNodeInfo.RemoveListener(id)
 				}
 			}
-		case star.MessageTerminateTypeShell:
-			// TODO: terminate shell
 		case star.MessageTerminateTypeStream:
-			// TODO: terminate stream
+			stream, ok := star.GetActiveStream(star.ThisNodeInfo.StreamIDs[reqMsg.Index])
+			if !ok {
+				invalid = true
+			} else {
+				stream.Close()
+			}
 		default:
 			errMsg := star.NewMessageError(star.MessageErrorResponseTypeUnsupportedTerminationType, fmt.Sprintf("%d", reqMsg.Type))
 			errMsg.Destination = msg.Source
@@ -276,13 +252,6 @@ func AgentProcessDebugRequest(msg *star.Message) {
 }
 
 func AgentProcessFileServerRequest(msg *star.Message) {
-
-}
-
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-
-func AgentProcessStream(stream *star.Stream) {
 
 }
 

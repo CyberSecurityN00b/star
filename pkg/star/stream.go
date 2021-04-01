@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"strings"
 	"sync"
 )
 
@@ -16,13 +19,15 @@ type Stream struct {
 }
 
 type StreamMeta struct {
-	ID           StreamID
-	remoteNodeID NodeID
-	Type         StreamType
-	Context      string
-	buffer       *bytes.Buffer
-	writelock    *sync.Mutex
-	endwriter    func([]byte)
+	ID            StreamID
+	remoteNodeID  NodeID
+	Type          StreamType
+	Context       string
+	writelock     *sync.Mutex
+	stdin         io.WriteCloser
+	funcwriter    func([]byte)
+	funccloser    func(StreamID)
+	functerminate func()
 }
 
 var ActiveStreams map[StreamID]*StreamMeta
@@ -38,7 +43,6 @@ func NewStreamMeta(t StreamType, dstID NodeID, context string) (meta *StreamMeta
 	meta.Type = t
 	meta.remoteNodeID = dstID
 	meta.Context = context
-	meta.buffer = &bytes.Buffer{}
 	meta.writelock = &sync.Mutex{}
 
 	NewActiveStream(meta)
@@ -53,12 +57,9 @@ func NewStreamMetaMirror(metaOrig *StreamMeta, dstID NodeID) (metaNew *StreamMet
 	metaNew.Type = metaOrig.Type
 	metaNew.remoteNodeID = dstID
 	metaNew.Context = metaOrig.Context
-	metaNew.buffer = &bytes.Buffer{}
 	metaNew.writelock = &sync.Mutex{}
-	metaNew.endwriter = func(data []byte) {
-		fmt.Printf("~~~> %s\n", data)
-		metaNew.buffer.Write(data)
-	}
+	metaNew.funcwriter = nil
+	metaNew.funccloser = nil
 
 	NewActiveStream(metaNew)
 	NewMessageSyncResponse().Send(ConnectID{})
@@ -66,10 +67,11 @@ func NewStreamMetaMirror(metaOrig *StreamMeta, dstID NodeID) (metaNew *StreamMet
 	return
 }
 
-func NewStreamMetaCommand(dstID NodeID, context string, writer func(data []byte)) (meta *StreamMeta) {
+func NewStreamMetaCommand(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
 	meta = NewStreamMeta(StreamTypeCommand, dstID, context)
 	go meta.SendMessageCreate()
-	meta.endwriter = writer
+	meta.funcwriter = writer
+	meta.funccloser = closer
 	return
 }
 
@@ -80,8 +82,8 @@ func (meta *StreamMeta) SendMessageCreate() {
 	msg := NewMessage()
 	msg.Type = MessageTypeStreamCreate
 	msg.Data = GobEncode(meta)
-
-	msg.Source = meta.remoteNodeID
+	msg.Destination = meta.remoteNodeID
+	msg.Source = ThisNode.ID
 	msg.Send(ConnectID{})
 
 	meta.writelock.Lock()
@@ -91,18 +93,17 @@ func (meta *StreamMeta) SendMessageAcknowledge() {
 	msg := NewMessage()
 	msg.Type = MessageTypeStreamAcknowledge
 	msg.Data = GobEncode(&Stream{ID: meta.ID})
-
-	msg.Source = meta.remoteNodeID
+	msg.Destination = meta.remoteNodeID
+	msg.Source = ThisNode.ID
 	msg.Send(ConnectID{})
 }
 
 func (meta *StreamMeta) SendMessageClose() {
-	fmt.Println("DEBUG: meta.SendMessageClose()")
 	msg := NewMessage()
 	msg.Type = MessageTypeStreamClose
 	msg.Data = GobEncode(meta)
-
-	msg.Source = meta.remoteNodeID
+	msg.Destination = meta.remoteNodeID
+	msg.Source = ThisNode.ID
 	msg.Send(ConnectID{})
 }
 
@@ -114,13 +115,19 @@ func (meta *StreamMeta) SendMessageWrite(data []byte) {
 	msg := NewMessage()
 	msg.Type = MessageTypeStream
 	msg.Data = GobEncode(flow)
-
-	msg.Source = meta.remoteNodeID
+	msg.Destination = meta.remoteNodeID
+	msg.Source = ThisNode.ID
 	msg.Send(ConnectID{})
 	meta.writelock.Lock()
 }
 
 func (meta *StreamMeta) Close() {
+	if meta.functerminate != nil {
+		meta.functerminate()
+	}
+	if meta.funccloser != nil {
+		meta.funccloser(meta.ID)
+	}
 	meta.SendMessageClose()
 	RemoveActiveStream(meta.ID)
 }
@@ -182,13 +189,7 @@ const (
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-func (stream *Stream) Process() {
-	fmt.Println("DEBUG: stream.Process()")
-	ThisNode.StreamProcessor(stream)
-}
-
 func (msg *Message) HandleStream() {
-	fmt.Println("DEBUG: HandleStream()")
 	switch msg.Type {
 	case MessageTypeStreamCreate:
 		HandleStreamCreate(msg)
@@ -210,8 +211,6 @@ func HandleStreamAcknowledge(msg *Message) {
 		meta, ok := GetActiveStream(streamMsg.ID)
 		if ok {
 			meta.writelock.Unlock()
-		} else {
-			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamAcknowledge")
 		}
 	} else {
 		fmt.Println("DEBUG: Error with gob encoding in HandleStreamAcknowledge")
@@ -219,7 +218,6 @@ func HandleStreamAcknowledge(msg *Message) {
 }
 
 func HandleStreamCreate(msg *Message) {
-	fmt.Println("DEBUG: HandleStreamCreate()")
 	// Create new meta if none exists
 	var streamMsg StreamMeta
 	var b bytes.Buffer
@@ -230,21 +228,54 @@ func HandleStreamCreate(msg *Message) {
 		meta.SendMessageAcknowledge()
 		switch meta.Type {
 		case StreamTypeCommand:
-			c := exec.Command(meta.Context)
-			c.Stdin = meta.buffer
+			args := strings.Split(meta.Context, " ")
+			var c *exec.Cmd
+			if len(args) == 0 {
+				meta.Close()
+			} else if len(args) == 1 {
+				c = exec.Command(args[0])
+			} else {
+				c = exec.Command(args[0], args[1:]...)
+			}
 			c.Stdout = meta
 			c.Stderr = meta
-			go c.Run()
+			c.Env = os.Environ()
+			meta.stdin, err = c.StdinPipe()
+			if err != nil {
+				defer meta.Close()
+			}
+			meta.funcwriter = func(data []byte) {
+				_, err = meta.stdin.Write(data)
+				if err != nil {
+					meta.Close()
+				}
+			}
+
+			meta.functerminate = func() {
+				if c.Process != nil {
+					c.Process.Kill()
+				}
+			}
+
+			err = c.Start()
+			if err == nil {
+				go func() {
+					err = c.Wait()
+					NewMessageError(MessageErrorResponseTypeCommandEnded, fmt.Sprintf("%v(%v)", c.Args, err)).Send(ConnectID{})
+					meta.Close()
+				}()
+			} else {
+				meta.Close()
+			}
 		default:
 			meta.Close()
 		}
 	} else {
-		fmt.Println("DEBUG: Error with gob decoding in HandleStreamCreate")
+		NewMessageError(MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%s.c", msg.ID))
 	}
 }
 
 func HandleStreamFlow(msg *Message) {
-	fmt.Println("DEBUG: HandleStreamFlow()")
 	// Write to meta.ReadChannel
 	var streamMsg Stream
 	var b bytes.Buffer
@@ -253,7 +284,7 @@ func HandleStreamFlow(msg *Message) {
 	if err == nil {
 		stream, ok := GetActiveStream(streamMsg.ID)
 		if ok {
-			stream.endwriter(streamMsg.Data)
+			stream.funcwriter(streamMsg.Data)
 			stream.SendMessageAcknowledge()
 		} else {
 			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamFlow")
@@ -261,11 +292,9 @@ func HandleStreamFlow(msg *Message) {
 	} else {
 		fmt.Println("DEBUG: Error with gob decoding in HandleStreamFlow")
 	}
-	fmt.Println("DEBUG: HandleStreamFlow() Done")
 }
 
 func HandleStreamClose(msg *Message) {
-	fmt.Println("DEBUG: HandleStreamClose()")
 	var streamMsg StreamMeta
 	var b bytes.Buffer
 	b.Write(msg.Data)
@@ -273,6 +302,12 @@ func HandleStreamClose(msg *Message) {
 	if err == nil {
 		stream, ok := GetActiveStream(streamMsg.ID)
 		if ok {
+			if stream.functerminate != nil {
+				stream.functerminate()
+			}
+			if stream.funccloser != nil {
+				stream.funccloser(stream.ID)
+			}
 			RemoveActiveStream(stream.ID)
 		} else {
 			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamClose")
@@ -287,12 +322,10 @@ func HandleStreamClose(msg *Message) {
 
 func (stream *StreamMeta) Write(p []byte) (n int, err error) {
 	for i := 0; i < len(p); i += streamBufferMax {
-		n := i + streamBufferMax
+		n = i + streamBufferMax
 		if n > len(p) {
 			n = len(p)
 		}
-
-		fmt.Printf("---> %s\n", p[i:n])
 		stream.SendMessageWrite(p[i:n])
 	}
 	return n, nil

@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"encoding/hex"
 	"math"
+	"os"
 	"strings"
 	"sync"
 )
@@ -60,4 +61,29 @@ func STARCoreSetup() {
 
 	ActiveStreams = make(map[StreamID]*StreamMeta)
 	ActiveStreamsMutex = &sync.Mutex{}
+}
+
+// Allows for the creation of listeners (bind) and connections (connect) via
+// command-line arguments.
+func ParameterHandling() {
+	for _, arg := range os.Args[1:] {
+		setup := strings.Split(arg, ":")
+		if setup[0] == "b" || setup[0] == "l" {
+			// [b]ind/[l]istener
+
+			if len(setup) == 2 {
+				NewTCPListener(":" + setup[1])
+			} else if len(setup) == 3 {
+				NewTCPListener(setup[1] + ":" + setup[2])
+			}
+		} else if setup[0] == "r" || setup[0] == "c" {
+			// [r]everse/[c]onnect
+
+			if len(setup) == 2 {
+				NewTCPConnection(":" + setup[1])
+			} else if len(setup) == 3 {
+				NewTCPConnection(setup[1] + ":" + setup[2])
+			}
+		}
+	}
 }

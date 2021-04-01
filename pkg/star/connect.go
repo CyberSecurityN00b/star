@@ -2,6 +2,7 @@ package star
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"sync"
 	"time"
@@ -133,8 +134,11 @@ func UnregisterListener(connID ConnectID) {
 ///////////////////////////////////////////////////////////////////////////////
 
 func SetupConnectionCertificate(certPEMBlock []byte, keyPEMBlock []byte) (err error) {
+	pool := x509.NewCertPool()
 	ConnectionCert, err = tls.X509KeyPair(certPEMBlock, keyPEMBlock)
-	ConnectionConfig = &tls.Config{Certificates: []tls.Certificate{ConnectionCert}, InsecureSkipVerify: true}
+	pool.AppendCertsFromPEM(certPEMBlock)
+	//TODO: Change below
+	ConnectionConfig = &tls.Config{Certificates: []tls.Certificate{ConnectionCert}, InsecureSkipVerify: true} //, InsecureSkipVerify: false, ClientAuth: tls.RequireAndVerifyClientCert, RootCAs: pool, ClientCAs: pool, ServerName: "star:node"}
 	return
 }
 

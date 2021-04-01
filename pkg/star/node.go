@@ -13,7 +13,6 @@ type Node struct {
 	Type             NodeType
 	Neighbors        []NodeID
 	MessageProcessor func(*Message)
-	StreamProcessor  func(*Stream)
 }
 
 type NodeInfo struct {
