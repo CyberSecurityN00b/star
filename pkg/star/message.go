@@ -145,6 +145,7 @@ const (
 	MessageErrorResponseTypeUnsupportedTerminationType
 	MessageErrorResponseTypeInvalidTerminationIndex
 	MessageErrorResponseTypeCommandEnded
+	MessageErrorResponseTypeShellConnectionLost
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -358,8 +359,6 @@ func (msg *Message) Send(src ConnectID) {
 				c, ok := connectionTracker[conn]
 				if ok {
 					go c.Send(*msg)
-				} else {
-					// Just don't worry about it I guess
 				}
 			}
 		}

@@ -75,6 +75,14 @@ func NewStreamMetaCommand(dstID NodeID, context string, writer func(data []byte)
 	return
 }
 
+func NewStreamMetaShell(context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypeShell, NodeID{}, context)
+	go meta.SendMessageCreate()
+	meta.funcwriter = writer
+	meta.funccloser = closer
+	return
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -184,6 +192,7 @@ const (
 	StreamTypeCommand StreamType = iota + 1
 	StreamTypeFileUpload
 	StreamTypeFileDownload
+	StreamTypeShell
 )
 
 ///////////////////////////////////////////////////////////////////////////////
