@@ -123,8 +123,8 @@ func (meta *StreamMeta) SendMessageWrite(data []byte) {
 	msg.Data = GobEncode(flow)
 	msg.Destination = meta.remoteNodeID
 	msg.Source = ThisNode.ID
-	msg.Send(ConnectID{})
 	meta.writelock.Lock()
+	msg.Send(ConnectID{})
 }
 
 func (meta *StreamMeta) Close() {
@@ -211,7 +211,6 @@ func (msg *Message) HandleStream() {
 
 func HandleStreamAcknowledge(msg *Message) {
 	var streamMsg Stream
-	defer func() { recover() }()
 
 	err := msg.GobDecodeMessage(&streamMsg)
 	if err == nil {

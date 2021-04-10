@@ -151,8 +151,11 @@ func (c Shell_Connection) Handle() {
 	var addr string
 	if c.TLSConn != nil {
 		addr = c.TLSConn.RemoteAddr().String()
-	} else {
+	} else if c.NetConn != nil {
 		addr = c.NetConn.RemoteAddr().String()
+	} else {
+		// What are we even doing here???
+		return
 	}
 	defer func() {
 		recover()
@@ -182,10 +185,8 @@ func (c Shell_Connection) Handle() {
 		return
 	}
 	meta := NewStreamMetaShell(context, c.Destination, func(data []byte) {
-		print("shell write\n")
 		c.NetConn.Write(data)
 	}, func(s StreamID) {
-		print("shell close\n")
 		c.Close()
 	})
 	c.StreamID = meta.ID
