@@ -9,17 +9,19 @@ import (
 )
 
 type Shell_Connector struct {
-	Type     ShellType
-	Address  string
-	Listener *net.Listener
+	Type      ShellType
+	Address   string
+	Listener  *net.Listener
+	Requester NodeID
 }
 
 type Shell_Connection struct {
-	Type      ShellType
-	NetConn   net.Conn
-	TLSConn   *tls.Conn
-	ConnectID ConnectID
-	StreamID  StreamID
+	Type        ShellType
+	NetConn     net.Conn
+	TLSConn     *tls.Conn
+	ConnectID   ConnectID
+	StreamID    StreamID
+	Destination NodeID
 }
 
 type ShellType byte
@@ -31,8 +33,12 @@ const (
 	ShellTypeUDPTLS
 )
 
-func NewShellListener(address string, t ShellType) {
-	go (&Shell_Connector{Address: address, Type: t}).Listen()
+func NewShellConnection(address string, t ShellType, requester NodeID) {
+	go (&Shell_Connector{Address: address, Type: t, Requester: requester}).Connect()
+}
+
+func NewShellListener(address string, t ShellType, requester NodeID) {
+	go (&Shell_Connector{Address: address, Type: t, Requester: requester}).Listen()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -126,6 +132,7 @@ func (connector *Shell_Connector) Listen() (err error) {
 
 		conn.NetConn = c
 		conn.Type = connector.Type
+		conn.Destination = connector.Requester
 		conn.ConnectID = RegisterConnection(conn)
 		go conn.Handle()
 	}
@@ -174,9 +181,11 @@ func (c Shell_Connection) Handle() {
 		//TODO: Error message here
 		return
 	}
-	meta := NewStreamMetaShell(context, func(data []byte) {
+	meta := NewStreamMetaShell(context, c.Destination, func(data []byte) {
+		print("shell write\n")
 		c.NetConn.Write(data)
 	}, func(s StreamID) {
+		print("shell close\n")
 		c.Close()
 	})
 	c.StreamID = meta.ID
@@ -186,7 +195,7 @@ func (c Shell_Connection) Handle() {
 		_, err := c.NetConn.Read(data)
 		if err == nil {
 			meta.Write(data)
-		} else if err == io.EOF {
+		} else {
 			c.NetConn.Close()
 			return
 		}
@@ -198,7 +207,7 @@ func (c Shell_Connection) MessageDuration() (d time.Duration) {
 }
 
 func (c Shell_Connection) Send(msg Message) (err error) {
-	return io.ErrClosedPipe
+	return
 }
 
 func (c Shell_Connection) Close() {
