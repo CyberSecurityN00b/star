@@ -109,13 +109,13 @@ const (
 	// creation of a new file server listener.
 	MessageTypeFileServer
 
-	// MessageTypeDebug identifies the message as being related to the output
-	// of debugging information.
-	MessageTypeDebug
+	// MessageTypeShellBind identifies the message as being related to the
+	// creation of a new shell listener.
+	MessageTypeShellBind
 
-	// MessageTypeShell identifies the message as being related to the creation
-	// of a new shell listener.
-	MessageTypeShell
+	// MessageTypeShellConnection identifies the message as being related to the
+	// creation of a new shell connection.
+	MessageTypeShellConnection
 )
 
 func (msg *Message) Process() {
@@ -145,6 +145,7 @@ const (
 	MessageErrorResponseTypeUnsupportedTerminationType
 	MessageErrorResponseTypeInvalidTerminationIndex
 	MessageErrorResponseTypeCommandEnded
+	MessageErrorResponseTypeShellConnectionLost
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -326,18 +327,35 @@ type MessageFileServerRequest struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/******************************* MessageDebug ********************************/
-///////////////////////////////////////////////////////////////////////////////
-
-type MessageDebugRequest struct {
-}
-
-///////////////////////////////////////////////////////////////////////////////
 /******************************* MessageShell ********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
-type MessageShellRequest struct {
-	Address string
+type MessageShellBindRequest struct {
+	Address   string
+	Type      ShellType
+	Requester NodeID
+}
+
+type MessageShellConnectionRequest struct {
+	Address   string
+	Type      ShellType
+	Requester NodeID
+}
+
+func NewMessageShellBindRequest(t ShellType, address string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeShellBind
+	msg.Data = GobEncode(MessageShellBindRequest{Type: t, Address: address, Requester: ThisNode.ID})
+
+	return
+}
+
+func NewMessageShellConnectionRequest(t ShellType, address string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeShellConnection
+	msg.Data = GobEncode(MessageShellConnectionRequest{Type: t, Address: address, Requester: ThisNode.ID})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -358,8 +376,6 @@ func (msg *Message) Send(src ConnectID) {
 				c, ok := connectionTracker[conn]
 				if ok {
 					go c.Send(*msg)
-				} else {
-					// Just don't worry about it I guess
 				}
 			}
 		}
@@ -367,12 +383,12 @@ func (msg *Message) Send(src ConnectID) {
 		c, ok := connectionTracker[dst]
 		if ok {
 			go c.Send(*msg)
-		} else {
+		} else if exists {
 			// Try try again
 			destinationTrackerMutex.Lock()
 			delete(destinationTracker, msg.Destination)
 			destinationTrackerMutex.Unlock()
-			msg.Send(src)
+			go msg.Send(src)
 		}
 	}
 }

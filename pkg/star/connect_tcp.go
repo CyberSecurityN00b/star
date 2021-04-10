@@ -67,15 +67,13 @@ func (connector *TCP_Connector) Listen() error {
 	// Defer cleanup for when listener ends
 	defer func() {
 		recover()
-		msg := NewMessageError(MessageErrorResponseTypeBindDropped, connector.Address)
-		msg.Send(ConnectID{})
+		NewMessageError(MessageErrorResponseTypeBindDropped, connector.Address).Send(ConnectID{})
 		UnregisterListener(id)
 		ThisNodeInfo.RemoveListener(id)
 	}()
 
 	// Notify of new listener
-	msg := NewMessageNewBind(connector.Address)
-	msg.Send(ConnectID{})
+	NewMessageNewBind(connector.Address).Send(ConnectID{})
 
 	var conn *TCP_Connection
 	for {
@@ -106,22 +104,20 @@ func (connector *TCP_Connector) Close() {
 func (c TCP_Connection) Handle() {
 	// Defer cleanup for when connection drops.
 	var addr string
-	if c.NetConn != nil {
-		addr = c.NetConn.RemoteAddr().String()
-	} else {
+	if c.TLSConn != nil {
 		addr = c.TLSConn.RemoteAddr().String()
+	} else {
+		addr = c.NetConn.RemoteAddr().String()
 	}
 	defer func() {
 		recover()
-		msg := NewMessageError(MessageErrorResponseTypeConnectionLost, addr)
-		msg.Send(ConnectID{})
+		NewMessageError(MessageErrorResponseTypeConnectionLost, addr).Send(ConnectID{})
 		UnregisterConnection(c.ID)
 		ThisNodeInfo.RemoveConnector(c.ID)
 	}()
 
 	// Notify of new connection
-	msg := NewConnection(addr)
-	msg.Send(ConnectID{})
+	NewConnection(addr).Send(ConnectID{})
 	ThisNodeInfo.AddConnector(c.ID, addr)
 
 	for {

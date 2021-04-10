@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/gob"
 	"encoding/hex"
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -29,10 +30,25 @@ func SqrtedString(b []byte, sep string) string {
 	return strings.Join(parts, sep)
 }
 
+// GobEncode gob encodes the provided data(d)
 func GobEncode(d interface{}) []byte {
 	var b bytes.Buffer
 	gob.NewEncoder(&b).Encode(d)
 	return b.Bytes()
+}
+
+// GobDecode gob decodes the provided data(d) into a type(t) pointer
+func (msg *Message) GobDecodeMessage(reqMsg interface{}) (err error) {
+	var b bytes.Buffer
+
+	b.Write(msg.Data)
+	err = gob.NewDecoder(&b).Decode(reqMsg)
+	if err != nil {
+		errMsg := NewMessageError(MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%d", msg.Type))
+		errMsg.Destination = msg.Source
+		errMsg.Send(ConnectID{})
+	}
+	return
 }
 
 func StringifySubarray(arr []string, starti int, endi int) (s string) {

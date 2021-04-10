@@ -1,8 +1,6 @@
 package star
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"io"
 	"os"
@@ -75,6 +73,14 @@ func NewStreamMetaCommand(dstID NodeID, context string, writer func(data []byte)
 	return
 }
 
+func NewStreamMetaShell(context string, dstID NodeID, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypeShell, dstID, context)
+	go meta.SendMessageCreate()
+	meta.funcwriter = writer
+	meta.funccloser = closer
+	return
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -117,8 +123,8 @@ func (meta *StreamMeta) SendMessageWrite(data []byte) {
 	msg.Data = GobEncode(flow)
 	msg.Destination = meta.remoteNodeID
 	msg.Source = ThisNode.ID
-	msg.Send(ConnectID{})
 	meta.writelock.Lock()
+	msg.Send(ConnectID{})
 }
 
 func (meta *StreamMeta) Close() {
@@ -163,7 +169,7 @@ func RemoveActiveStream(id StreamID) {
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
-type StreamID [16]byte
+type StreamID [9]byte
 
 // Is the StreamID an empty StreamID?
 func (id StreamID) IsEmptyStreamID() bool {
@@ -184,6 +190,7 @@ const (
 	StreamTypeCommand StreamType = iota + 1
 	StreamTypeFileUpload
 	StreamTypeFileDownload
+	StreamTypeShell
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -204,30 +211,27 @@ func (msg *Message) HandleStream() {
 
 func HandleStreamAcknowledge(msg *Message) {
 	var streamMsg Stream
-	var b bytes.Buffer
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&streamMsg)
+
+	err := msg.GobDecodeMessage(&streamMsg)
 	if err == nil {
 		meta, ok := GetActiveStream(streamMsg.ID)
 		if ok {
 			meta.writelock.Unlock()
 		}
-	} else {
-		fmt.Println("DEBUG: Error with gob encoding in HandleStreamAcknowledge")
 	}
 }
 
 func HandleStreamCreate(msg *Message) {
 	// Create new meta if none exists
 	var streamMsg StreamMeta
-	var b bytes.Buffer
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&streamMsg)
+
+	err := msg.GobDecodeMessage(&streamMsg)
 	if err == nil {
 		meta := NewStreamMetaMirror(&streamMsg, msg.Source)
 		meta.SendMessageAcknowledge()
 		switch meta.Type {
 		case StreamTypeCommand:
+			// Agent will handle this one
 			args := strings.Split(meta.Context, " ")
 			var c *exec.Cmd
 			if len(args) == 0 {
@@ -267,6 +271,14 @@ func HandleStreamCreate(msg *Message) {
 			} else {
 				meta.Close()
 			}
+		case StreamTypeShell:
+			// Terminal will handle this one
+			meta.funcwriter = func(data []byte) {
+				fmt.Printf("%s", data)
+			}
+			meta.functerminate = func() {
+
+			}
 		default:
 			meta.Close()
 		}
@@ -278,9 +290,8 @@ func HandleStreamCreate(msg *Message) {
 func HandleStreamFlow(msg *Message) {
 	// Write to meta.ReadChannel
 	var streamMsg Stream
-	var b bytes.Buffer
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&streamMsg)
+
+	err := msg.GobDecodeMessage(&streamMsg)
 	if err == nil {
 		stream, ok := GetActiveStream(streamMsg.ID)
 		if ok {
@@ -289,16 +300,13 @@ func HandleStreamFlow(msg *Message) {
 		} else {
 			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamFlow")
 		}
-	} else {
-		fmt.Println("DEBUG: Error with gob decoding in HandleStreamFlow")
 	}
 }
 
 func HandleStreamClose(msg *Message) {
 	var streamMsg StreamMeta
-	var b bytes.Buffer
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&streamMsg)
+
+	err := msg.GobDecodeMessage(&streamMsg)
 	if err == nil {
 		stream, ok := GetActiveStream(streamMsg.ID)
 		if ok {
@@ -312,8 +320,6 @@ func HandleStreamClose(msg *Message) {
 		} else {
 			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamClose")
 		}
-	} else {
-		fmt.Println("DEBUG: Error with gob decoding in HandleStreamClose")
 	}
 }
 

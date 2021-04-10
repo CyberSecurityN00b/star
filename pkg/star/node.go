@@ -98,10 +98,6 @@ const (
 
 	// NodeTypeAgent identifies the STAR Node as being an Agent Node
 	NodeTypeAgent
-
-	// NodeTypeShell is a psuedonode that is used when connections to the
-	// shell listener are detected
-	NodeTypeShell
 )
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -2,9 +2,7 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"embed"
-	"encoding/gob"
 	"fmt"
 	"os"
 	"regexp"
@@ -263,8 +261,6 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandSet(inputs[1], star.StringifySubarray(inputs, 2, len(inputs)))
 		}
-	case ":shell":
-		terminalCommandShell()
 	case ":sync":
 		TerminalSynchronize()
 	case ":t", ":terminate":
@@ -365,11 +361,16 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("--> COMMAND HELP FOR: :b, :bind")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("\t:b <addr>          -  Creates a listener on the local terminal at <addr>.")
-		fmt.Println("\t:b :4444           -  Creates a listener on the local terminal on port 4444.")
-		fmt.Println("\t:b <agent> <addr>  -  Creates a listener on <agent> at <addr>.")
+		fmt.Println("\t:b <addr>                    -  Creates a listener on the local terminal at <addr>.")
+		fmt.Println("\t:b :4444                     -  Creates a listener on the local terminal on port 4444.")
+		fmt.Println("\t:b <agent> <addr>            -  Creates a listener on <agent> at <addr>.")
 		fmt.Println("\t:b agent001 :4444")
 		fmt.Println("\t:b agent001 10.10.10.10:4444")
+		fmt.Println("\t:b <agent> shell:<addr>      - Creates a listener to interact with reverse shells over tcp.")
+		fmt.Println("\t:b <agent> shell.tcp:<addr>  - Creates a listener to interact with reverse shells over tcp.")
+		fmt.Println("\t:b <agent> shell.tls:<addr>  - Creates a listener to interact with reverse shells over tcp/tls.")
+		fmt.Println("\t:b <agent> shell.udp:<addr>  - Creates a listener to interact with reverse shells over udp.")
+		fmt.Println("\t:b <agent> shell.wtf:<addr>  - Creates a listener to interact with reverse shells over udp/tls (why would you do this!?).")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:b` to create a TCP TLS listener for other STAR node to connect to. <addr> uses the Golang network address format.")
@@ -377,10 +378,15 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("--> COMMAND HELP FOR: :c, :connect")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("\t:c <addr>            -  Connects the terminal to a STAR node at <addr>.")
-		fmt.Println("\t:c 10.10.10.10:4444  -  Connects the terminal to a STAR node at 10.10.10.10:4444")
-		fmt.Println("\t:c <agent> <addr>    -  Connects <agent> to a STAR node at <addr>.")
+		fmt.Println("\t:c <addr>                    -  Connects the terminal to a STAR node at <addr>.")
+		fmt.Println("\t:c 10.10.10.10:4444          -  Connects the terminal to a STAR node at 10.10.10.10:4444")
+		fmt.Println("\t:c <agent> <addr>            -  Connects <agent> to a STAR node at <addr>.")
 		fmt.Println("\t:c agent002 10.10.10.10:4444")
+		fmt.Println("\t:c <agent> shell:<addr>      -  Connects to a listening shell to interact with it over tcp.")
+		fmt.Println("\t:c <agent> shell.tcp:<addr>  -  Connects to a listening shell to interact with it over tcp.")
+		fmt.Println("\t:c <agent> shell.tls:<addr>  -  Connects to a listening shell to interact with it over tcp/tls.")
+		fmt.Println("\t:c <agent> shell.udp:<addr>  -  Connects to a listening shell to interact with it over udp.")
+		fmt.Println("\t:c <agent> shell.wtf:<addr>  -  Connects to a listening shell to interact with it over udp/tls (why would you do this!?).")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:c` to connect to a TCP TLS listener of another STAR node. <addr> uses the Golang network address format.")
@@ -469,16 +475,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:s` to modify properties of the STAR terminal and constellation.")
-	case ":shell":
-		fmt.Println("--> COMMAND HELP FOR: :shell")
-		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
-		fmt.Println("USAGE: ")
-		fmt.Println("\t<<<>>>")
-		fmt.Println()
-		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
 	case ":sync":
 		fmt.Println("--> COMMAND HELP FOR: :sync")
 		fmt.Println()
@@ -575,7 +571,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":k :kill :killswitch \t Panic button! Destroy and cleanup constellation.")
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
-		fmt.Fprintln(w, ":shell \t Creates a STAR Shell listener and binds it.")
 		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
 		fmt.Fprintln(w, ":t :terminate \t Terminates an agent, connection, or command.")
 		fmt.Fprintln(w, ":u :up :upload \t Uploads a file from the agent to the terminal.")
@@ -597,39 +592,174 @@ func terminalCommandHelp(topic string) {
 }
 
 func terminalCommandBind(node star.NodeID, addresses ...string) {
-	if node.IsBroadcastNodeID() || node == star.ThisNode.ID {
-		for _, address := range addresses {
-			printInfo("Setting up listener on " + address)
-			star.NewTCPListener(address)
+	for _, address := range addresses {
+		switch strings.ToLower(strings.Split(address, ":")[0]) {
+		case "tcp":
+			terminalCommandTCPBind(node, address)
+		case "shell", "shell.tcp", "shell.udp", "shell.wtf":
+			terminalCommandShellBind(node, address)
+		default:
+			terminalCommandTCPBind(node, "tcp:"+address)
 		}
+	}
+}
+
+func terminalCommandTCPBind(node star.NodeID, address string) {
+	var a string
+
+	parts := strings.Split(address, ":")
+	if len(parts) == 2 {
+		a = ":" + parts[1]
+	} else if len(parts) == 3 {
+		a = parts[1] + ":" + parts[2]
+	} else {
+		// Invalid address format
+		printError(fmt.Sprintf("Invalid address format given for TCP listener: %s", a))
+		return
+	}
+
+	if node.IsBroadcastNodeID() || node == star.ThisNode.ID {
+		printInfo("Setting up listener on " + a)
+		star.NewTCPListener(a)
 	}
 
 	if node != star.ThisNode.ID {
-		for _, address := range addresses {
-			bindMsg := star.NewMessageBindTCP(address)
-			bindMsg.Destination = node
-			bindMsg.Send(star.ConnectID{})
+		bindMsg := star.NewMessageBindTCP(a)
+		bindMsg.Destination = node
+		bindMsg.Send(star.ConnectID{})
+	}
+	return
+}
+
+func terminalCommandShellBind(node star.NodeID, address string) {
+	var a string // Address
+	var s star.ShellType
+
+	parts := strings.Split(address, ":")
+	if len(parts) == 2 {
+		a = ":" + parts[1]
+	} else if len(parts) == 3 {
+		a = parts[1] + ":" + parts[2]
+	} else {
+		// Invalid address format
+		printError(fmt.Sprintf("Invalid address format given for shell listener: %s", address))
+		return
+	}
+
+	switch parts[0] {
+	case "shell", "shell.tcp":
+		s = star.ShellTypeTCP
+	case "shell.tls":
+		s = star.ShellTypeTCPTLS
+	case "shell.udp":
+		s = star.ShellTypeUDP
+	case "shell.wtf":
+		s = star.ShellTypeUDPTLS
+	default:
+		printError(fmt.Sprintf("Invalid shell type specifier given. Receved \"%s\", expected one of the following:", parts[0]))
+		printError("\tshell")
+		printError("\tshell.tcp")
+		printError("\tshell.tls")
+		printError("\tshell.udp")
+		printError("\tshell.wtf")
+	}
+
+	if node.IsBroadcastNodeID() || node == star.ThisNode.ID {
+		printInfo(fmt.Sprintf("Creating listener of %s on %s.", s, a))
+		star.NewShellListener(a, s, star.ThisNode.ID)
+	}
+
+	if node != star.ThisNode.ID {
+		bindMsg := star.NewMessageShellBindRequest(s, a)
+		bindMsg.Destination = node
+		bindMsg.Send(star.ConnectID{})
+	}
+}
+
+func terminalCommandConnect(node star.NodeID, addresses ...string) (err error) {
+	for _, address := range addresses {
+		switch strings.ToLower(strings.Split(address, ":")[0]) {
+		case "tcp":
+			terminalCommandTCPConnect(node, address)
+		case "shell", "shell.tcp", "shell.udp", "shell.wtf":
+			terminalCommandShellConnect(node, address)
+		default:
+			terminalCommandTCPConnect(node, "tcp:"+address)
 		}
 	}
 	return
 }
 
-func terminalCommandConnect(node star.NodeID, addresses ...string) (err error) {
+func terminalCommandTCPConnect(node star.NodeID, address string) {
+	var a string
+
+	parts := strings.Split(address, ":")
+	if len(parts) == 2 {
+		a = ":" + parts[1]
+	} else if len(parts) == 3 {
+		a = parts[1] + ":" + parts[2]
+	} else {
+		// Invalid address format
+		printError(fmt.Sprintf("Invalid address format given for TCP connector: %s", a))
+		return
+	}
+
 	if node.IsBroadcastNodeID() || node == star.ThisNode.ID {
-		for _, address := range addresses {
-			printInfo("Connecting to " + address)
-			star.NewTCPConnection(address)
-		}
+		printInfo("Connecting to " + a)
+		star.NewTCPConnection(a)
 	}
 
 	if node != star.ThisNode.ID {
-		for _, address := range addresses {
-			conMsg := star.NewMessageConnectTCP(address)
-			conMsg.Destination = node
-			conMsg.Send(star.ConnectID{})
-		}
+		conMsg := star.NewMessageConnectTCP(a)
+		conMsg.Destination = node
+		conMsg.Send(star.ConnectID{})
 	}
 	return
+}
+
+func terminalCommandShellConnect(node star.NodeID, address string) {
+	var a string // Address
+	var s star.ShellType
+
+	parts := strings.Split(address, ":")
+	if len(parts) == 2 {
+		a = ":" + parts[1]
+	} else if len(parts) == 3 {
+		a = parts[1] + ":" + parts[2]
+	} else {
+		// Invalid address format
+		printError(fmt.Sprintf("Invalid address format given for shell connection: %s", address))
+		return
+	}
+
+	switch parts[0] {
+	case "shell", "shell.tcp":
+		s = star.ShellTypeTCP
+	case "shell.tls":
+		s = star.ShellTypeTCPTLS
+	case "shell.udp":
+		s = star.ShellTypeUDP
+	case "shell.wtf":
+		s = star.ShellTypeUDPTLS
+	default:
+		printError(fmt.Sprintf("Invalid shell type specifier given. Receved \"%s\", expected one of the following:", parts[0]))
+		printError("\tshell")
+		printError("\tshell.tcp")
+		printError("\tshell.tls")
+		printError("\tshell.udp")
+		printError("\tshell.wtf")
+	}
+
+	if node.IsBroadcastNodeID() || node == star.ThisNode.ID {
+		printInfo(fmt.Sprintf("Connecting to %s on %s.", s, a))
+		star.NewShellConnection(a, s, star.ThisNode.ID)
+	}
+
+	if node != star.ThisNode.ID {
+		conMsg := star.NewMessageShellConnectionRequest(s, a)
+		conMsg.Destination = node
+		conMsg.Send(star.ConnectID{})
+	}
 }
 
 func terminalCommandDownload() (err error) {
@@ -749,11 +879,11 @@ func terminalCommandJump(context string) (err error) {
 			for i, id := range agent.Info.StreamIDs {
 				streamname := fmt.Sprintf("stream%03d", i)
 				if streamname == identifiers[1] {
-					if agent.Info.StreamTypes[i] == star.StreamTypeCommand {
+					if agent.Info.StreamTypes[i] == star.StreamTypeCommand || agent.Info.StreamTypes[i] == star.StreamTypeShell {
 						activeStream = id
 						printInfo(fmt.Sprintf("Changing stream focus to %s(%s)", streamname, id))
 					} else {
-						printError(fmt.Sprintf("%s for %s is not a Command type stream; only Command type streams can have focus. No stream focus set.", streamname, agent.FriendlyName))
+						printError(fmt.Sprintf("%s for %s is not a Command/Shell type stream; only Command/Shell type streams can have focus. No stream focus set.", streamname, agent.FriendlyName))
 					}
 				}
 			}
@@ -849,6 +979,8 @@ func terminalCommandList(context string) (err error) {
 					streamtype = "Upload"
 				case star.StreamTypeFileDownload:
 					streamtype = "Download"
+				case star.StreamTypeShell:
+					streamtype = "Shell"
 				default:
 					streamtype = "Unknown"
 				}
@@ -863,8 +995,8 @@ func terminalCommandList(context string) (err error) {
 			fmt.Fprintln(w, " \t ")
 			w.Flush()
 		} else {
-			terminalCommandList("all")
-			printError(fmt.Sprintf("%s is not a valid identifier! Use one of the above!", context))
+			go terminalCommandList("all")
+			printError(fmt.Sprintf("%s is not a valid identifier! Use one of the following!", context))
 		}
 	}
 
@@ -1027,11 +1159,6 @@ func terminalCommandSendCommand(cmd string) (err error) {
 	return
 }
 
-func terminalCommandShell() {
-	printError("Creating shell listeners is not yet implemented.")
-	return
-}
-
 func terminalCommandDebug() {
 	printError("Debug is not yet implemented.")
 	return
@@ -1060,67 +1187,55 @@ func TerminalProcessMessage(msg *star.Message) {
 }
 
 func TerminalProcessMessageError(msg *star.Message) {
-	var errmsg star.MessageErrorResponse
-	var b bytes.Buffer
+	var errMsg star.MessageErrorResponse
 
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&errmsg)
+	err := msg.GobDecodeMessage(&errMsg)
 	if err == nil {
-		switch errmsg.Type {
+		switch errMsg.Type {
 		case star.MessageErrorResponseTypeX509KeyPair:
-			printError(fmt.Sprintf("%s has reported an error with the creation of the X509 Key pair. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported an error with the creation of the X509 Key pair. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeConnectionLost:
-			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeBindDropped:
-			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the listening bind on %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the listening bind on %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeGobDecodeError:
-			printError(fmt.Sprintf("%s has reported an error with attempting to gob decode a message of type %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported an error with attempting to gob decode a message of type %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeAgentExitSignal:
-			printNotice(fmt.Sprintf("%s has reported that it was terminated with the signal interrupt %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that it was terminated with the signal interrupt %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 			AgentTrackerRemoveInfo(msg.Source)
 		case star.MessageErrorResponseTypeUnsupportedConnectorType:
-			printError(fmt.Sprintf("%s has reported that an unsupported connector type was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported that an unsupported connector type was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeInvalidTerminationIndex:
-			printError(fmt.Sprintf("%s has reported that an invalid termination index was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported that an invalid termination index was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeCommandEnded:
-			printNotice(fmt.Sprintf("%s has reported that a command has terminated. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printNotice(fmt.Sprintf("%s has reported that a command has terminated. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
+		case star.MessageErrorResponseTypeShellConnectionLost:
+			printNotice(fmt.Sprintf("%s has reported that a shell connection was dropped. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		default:
-			printError(fmt.Sprintf("%s has reported: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errmsg.Context))
+			printError(fmt.Sprintf("%s has reported: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		}
-	} else {
-		printError(fmt.Sprintf("% attempted to report an error, but there was another error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 }
 
 func TerminalProcessSyncResponse(msg *star.Message) {
 	var resMsg star.MessageSyncResponse
-	var b bytes.Buffer
 
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resMsg)
+	err := msg.GobDecodeMessage(&resMsg)
 	if err == nil {
 		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
 
 		if !terminalSettings["sync.mute"].Data.(bool) {
 			printInfo(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg.Source, star.StreamID{})))
 		}
-	} else {
-		if !terminalSettings["sync.muteerrors"].Data.(bool) {
-			printError(fmt.Sprintf("%s attempted to report a synchronization response, but there was an error decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
-		}
 	}
 }
 
 func TerminalProcessMessageNewBind(msg *star.Message) {
 	var resMsg star.MessageNewBindResponse
-	var b bytes.Buffer
 
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resMsg)
+	err := msg.GobDecodeMessage(&resMsg)
 	if err == nil {
 		printInfo(fmt.Sprintf("%s has reported a new bind/listener on %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
-	} else {
-		printError(fmt.Sprintf("%s attempted to report a new bind/listener, but there was an error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 
 	// Resynchronize
@@ -1129,14 +1244,10 @@ func TerminalProcessMessageNewBind(msg *star.Message) {
 
 func TerminalProcessMessageNewConnection(msg *star.Message) {
 	var resMsg star.MessageNewConnectionResponse
-	var b bytes.Buffer
 
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resMsg)
+	err := msg.GobDecodeMessage(&resMsg)
 	if err == nil {
 		printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
-	} else {
-		printError(fmt.Sprintf("%s attempted to report a new connection, but there was an error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 
 	// Resynchronize
@@ -1145,14 +1256,10 @@ func TerminalProcessMessageNewConnection(msg *star.Message) {
 
 func TerminalProcessMessageHello(msg *star.Message) {
 	var resMsg star.MessageHelloResponse
-	var b bytes.Buffer
 
-	b.Write(msg.Data)
-	err := gob.NewDecoder(&b).Decode(&resMsg)
+	err := msg.GobDecodeMessage(&resMsg)
 	if err == nil {
 		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
-	} else {
-		printError(fmt.Sprintf("%s attempted to report an initial connection with the constellation, but there was an error when decoding the data.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 }
 
@@ -1286,9 +1393,6 @@ func AgentTrackerUpdateInfo(node *star.Node, info *star.NodeInfo) {
 		case star.NodeTypeAgent:
 			agentFriendlyNameTracker++
 			name = fmt.Sprintf("agent%03d", agentFriendlyNameTracker)
-		case star.NodeTypeShell:
-			shellFriendlyNameTracker++
-			name = fmt.Sprintf("shell%03d", shellFriendlyNameTracker)
 		case star.NodeTypeTerminal:
 			terminalFriendlyNameCounter++
 			name = fmt.Sprintf("term%03d", terminalFriendlyNameCounter)

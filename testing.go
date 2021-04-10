@@ -20,6 +20,7 @@ type B struct {
 }
 
 func main() {
-	var test []byte
-	fmt.Println(len(test))
+	fmt.Println(star.NewConnectID())
+	fmt.Println(star.NewMessage().ID)
+	fmt.Println(star.NewNode(star.NodeTypeAgent).ID)
 }

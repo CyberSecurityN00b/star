@@ -67,7 +67,6 @@ type ConnectorType byte
 const (
 	// ConnectorTypeTCP is used by the terminal to tell an agent that a TCP
 	// connector should be used when requesting a bind or a connect.
-	// The implementation for a TCP connector is in connects/tcp_connect.go
 	ConnectorTypeTCP ConnectorType = iota + 1
 )
 
