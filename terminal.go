@@ -79,10 +79,17 @@ func initTerminal() {
 	terminalSettings["display.timestamp"] = terminalSetting{"2006.01.02-15.04.05", "GoLang timestamp format for logs/notices."}
 	terminalSettings["sync.minutes"] = terminalSetting{int64(5), "Send a Synchronization Request to all agents every N minutes. (Changes take effect at the next ticker synchronization; values less than 1 are ignored.)"}
 	terminalSettings["sync.mute"] = terminalSetting{true, "Mutes Synchronization Responses from agents. (Not applicable to errors.)"}
-	terminalSettings["sync.muteerrors"] = terminalSetting{false, "Mutes Synchronization Response errors from agents. (Not applicable to responses.)"}
 	terminalSettings["info.showenv"] = terminalSetting{false, "Shows environment variables in agent information."}
 	terminalSettings["info.showos"] = terminalSetting{true, "Shows OS information in agent information."}
 	terminalSettings["info.showinterfaces"] = terminalSetting{true, "Shows network interfaces in agent information."}
+	terminalSettings["library.agents"] = terminalSetting{"./agents", "Local directory containing S.T.A.R. agent executables."}
+	terminalSettings["library.library"] = terminalSetting{"./library", "Local directory containing files to share with constellation. Subdirectories are not shared."}
+	terminalSettings["library.loot"] = terminalSetting{"./loot", "Local directory to save files downloaded from agents. Stored in agent-specific subdirectories."}
+	terminalSettings["fileserver.password"] = terminalSetting{star.RandString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8), "Password required to interact with file servers. CAREFUL ABOUT SPECIAL CHARACTERS!"}
+	terminalSettings["fileserver.param.pass"] = terminalSetting{"p", "Parameter the fileserver checks for the password."}
+	terminalSettings["fileserver.param.file"] = terminalSetting{"f", "Parameter the fileserver checks for the library filename."}
+	terminalSettings["fileserver.param.agent"] = terminalSetting{"a", "Parameter the fileserver checks for the agent filename (has precedence over library filename parameter if both are specified)."}
+	terminalSettings["fileserver.param.upload"] = terminalSetting{"n", "Parameter the fileserver checks for the name of the uploaded file for POST requests.."}
 
 	// Setup history
 	historyItems = make(map[uint]historyItem)
@@ -882,6 +889,10 @@ func terminalCommandJump(context string) (err error) {
 					if agent.Info.StreamTypes[i] == star.StreamTypeCommand || agent.Info.StreamTypes[i] == star.StreamTypeShell {
 						activeStream = id
 						printInfo(fmt.Sprintf("Changing stream focus to %s(%s)", streamname, id))
+						meta, ok := star.GetActiveStream(activeStream)
+						if ok {
+							meta.SendMessageTakeover()
+						}
 					} else {
 						printError(fmt.Sprintf("%s for %s is not a Command/Shell type stream; only Command/Shell type streams can have focus. No stream focus set.", streamname, agent.FriendlyName))
 					}
@@ -1183,6 +1194,8 @@ func TerminalProcessMessage(msg *star.Message) {
 		TerminalProcessMessageNewConnection(msg)
 	case star.MessageTypeHello:
 		TerminalProcessMessageHello(msg)
+	case star.MessageTypeStreamTakenOver:
+		TerminalProcessMessageStreamTakenOver(msg)
 	}
 }
 
@@ -1260,6 +1273,31 @@ func TerminalProcessMessageHello(msg *star.Message) {
 	err := msg.GobDecodeMessage(&resMsg)
 	if err == nil {
 		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
+	}
+}
+
+func TerminalProcessMessageStreamTakenOver(msg *star.Message) {
+	var resMsg star.MessageStreamTakenOverRequest
+
+	err := msg.GobDecodeMessage(&resMsg)
+	if err == nil {
+		streamName := FriendlyAgentName(msg.Source, resMsg.Stream)
+		oldName := FriendlyAgentName(resMsg.OldNode, star.StreamID{})
+		newName := FriendlyAgentName(resMsg.NewNode, star.StreamID{})
+		if star.ThisNode.ID == resMsg.OldNode {
+			// We lost control of the stream
+			printNotice(fmt.Sprintf("Lost control of %s to %s!", streamName, newName))
+			if activeNode == msg.Source && activeStream == resMsg.Stream {
+				printNotice(fmt.Sprintf("%s was active stream, resetting to %s!", streamName, FriendlyAgentName(msg.Source, star.StreamID{})))
+				activeStream = star.StreamID{}
+			}
+		} else if star.ThisNode.ID == resMsg.NewNode {
+			// We gained control of the stream
+			printInfo(fmt.Sprintf("Successfully took control of %s from %s!", streamName, oldName))
+		} else {
+			// We're not involved, but there sure are a lot of terminals in this constellation
+			printInfo(fmt.Sprintf("%s has taken control of %s from %s.", newName, streamName, oldName))
+		}
 	}
 }
 

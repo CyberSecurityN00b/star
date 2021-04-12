@@ -70,12 +70,17 @@ const (
 	// forwarded if the correct confirmation code is passed.
 	MessageTypeKillSwitch
 
-	// MessageTypeStream identifies the Message as being related to
+	// MessageTypeStream* identifies the Message as being related to
 	// bi-directional interactive traffic (i.e., a command prompt)
 	MessageTypeStream
 	MessageTypeStreamCreate
 	MessageTypeStreamAcknowledge
 	MessageTypeStreamClose
+	MessageTypeStreamTakeover
+
+	// MessageTypeStreamTakenOver is not handled by the stream, but rather
+	// the terminal who previously had access to the stream.
+	MessageTypeStreamTakenOver
 
 	// MessageTypeBind indentifies the Message as being related to
 	// the creation of a Listener on an agent
@@ -323,7 +328,32 @@ func NewMessageTerminate(t MessageTerminateType, index uint) (msg *Message) {
 ///////////////////////////////////////////////////////////////////////////////
 
 type MessageFileServerRequest struct {
-	Address string
+	Address       string
+	Password      string
+	ParamAgent    string
+	ParamFile     string
+	ParamName     string // For uploads
+	ParamPassword string
+	Agents        map[string]FileID
+	Files         map[string]FileID
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/*************************** MessageStreamTakenOver **************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageStreamTakenOverRequest struct {
+	NewNode NodeID
+	OldNode NodeID
+	Stream  StreamID
+}
+
+func NewMessageStreamTakenOverRequest(old NodeID, new NodeID, stream StreamID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeStreamTakenOver
+	msg.Data = GobEncode(MessageStreamTakenOverRequest{NewNode: new, OldNode: old, Stream: stream})
+
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -400,7 +430,7 @@ func (msg *Message) Send(src ConnectID) {
 func (msg *Message) Handle(src ConnectID) {
 	ismsg := false
 	// If part of a stream, offload to the functions in stream.go
-	if msg.Type == MessageTypeStream || msg.Type == MessageTypeStreamCreate || msg.Type == MessageTypeStreamClose || msg.Type == MessageTypeStreamAcknowledge {
+	if msg.Type == MessageTypeStream || msg.Type == MessageTypeStreamCreate || msg.Type == MessageTypeStreamClose || msg.Type == MessageTypeStreamAcknowledge || msg.Type == MessageTypeStreamTakeover {
 		ismsg = true
 	}
 

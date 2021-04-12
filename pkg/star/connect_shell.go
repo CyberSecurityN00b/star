@@ -192,7 +192,7 @@ func (c Shell_Connection) Handle() {
 	c.StreamID = meta.ID
 
 	for {
-		data := make([]byte, 1024)
+		data := make([]byte, RandDataSize())
 		_, err := c.NetConn.Read(data)
 		if err == nil {
 			meta.Write(data)
