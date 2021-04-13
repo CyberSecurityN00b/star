@@ -200,7 +200,11 @@ func NewMessageSyncResponse() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeSyncResponse
 	ThisNodeInfo.Update()
-	msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: ThisNodeInfo})
+	if ThisNode.Type == NodeTypeTerminal {
+		msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: NodeInfo{}})
+	} else {
+		msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: ThisNodeInfo})
+	}
 
 	return
 }
@@ -336,24 +340,6 @@ type MessageFileServerRequest struct {
 	ParamPassword string
 	Agents        map[string]FileID
 	Files         map[string]FileID
-}
-
-///////////////////////////////////////////////////////////////////////////////
-/*************************** MessageStreamTakenOver **************************/
-///////////////////////////////////////////////////////////////////////////////
-
-type MessageStreamTakenOverRequest struct {
-	NewNode NodeID
-	OldNode NodeID
-	Stream  StreamID
-}
-
-func NewMessageStreamTakenOverRequest(old NodeID, new NodeID, stream StreamID) (msg *Message) {
-	msg = NewMessage()
-	msg.Type = MessageTypeStreamTakenOver
-	msg.Data = GobEncode(MessageStreamTakenOverRequest{NewNode: new, OldNode: old, Stream: stream})
-
-	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////

@@ -129,14 +129,6 @@ func (meta *StreamMeta) SendMessageWrite(data []byte) {
 	msg.Send(ConnectID{})
 }
 
-func (meta *StreamMeta) SendMessageTakeover() {
-	msg := NewMessage()
-	msg.Type = MessageTypeStreamTakeover
-	msg.Destination = meta.remoteNodeID
-	msg.Source = ThisNode.ID
-	msg.Send(ConnectID{})
-}
-
 func (meta *StreamMeta) Close() {
 	if meta.functerminate != nil {
 		meta.functerminate()
@@ -157,7 +149,7 @@ func NewActiveStream(tracker *StreamMeta) {
 
 	id := tracker.ID
 	ActiveStreams[id] = tracker
-	ThisNodeInfo.AddStream(tracker.ID, tracker.Type, tracker.Context)
+	ThisNodeInfo.AddStream(tracker.ID, tracker.Type, tracker.Context, tracker.remoteNodeID)
 }
 
 func GetActiveStream(id StreamID) (tracker *StreamMeta, ok bool) {
@@ -216,8 +208,6 @@ func (msg *Message) HandleStream() {
 		HandleStreamClose(msg)
 	case MessageTypeStreamAcknowledge:
 		HandleStreamAcknowledge(msg)
-	case MessageTypeStreamTakeover:
-		HandleStreamTakeover(msg)
 	}
 }
 
@@ -331,36 +321,6 @@ func HandleStreamClose(msg *Message) {
 			RemoveActiveStream(stream.ID)
 		} else {
 			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamClose")
-		}
-	}
-}
-
-func HandleStreamTakeover(msg *Message) {
-	var streamMsg StreamTakeover
-
-	err := msg.GobDecodeMessage(&streamMsg)
-	if err == nil {
-		stream, ok := GetActiveStream(streamMsg.ID)
-		if ok {
-			// If old is the same as new, just ignore
-			if stream.remoteNodeID == msg.Source {
-				return
-			}
-
-			// Notify old destination
-			msg := NewMessageStreamTakenOverRequest(stream.remoteNodeID, msg.Source, stream.ID)
-			msg.Destination = stream.remoteNodeID
-			msg.Send(ConnectID{})
-
-			// Change current after any writing is finished.
-			stream.writelock.Lock()
-			defer stream.writelock.Unlock()
-			stream.remoteNodeID = msg.Source
-
-			// Notify new terminal of new stream
-			go stream.SendMessageCreate()
-		} else {
-			fmt.Println("DEBUG: Error with stream takeover.")
 		}
 	}
 }

@@ -24,6 +24,7 @@ type NodeInfo struct {
 	ShellInfos      map[uint]string
 	StreamIDs       map[uint]StreamID
 	StreamInfos     map[uint]string
+	StreamOwners    map[uint]NodeID
 	StreamTypes     map[uint]StreamType
 
 	GOOS   string
@@ -116,6 +117,7 @@ func (ni *NodeInfo) Setup() {
 	ni.StreamIDs = make(map[uint]StreamID)
 	ni.StreamInfos = make(map[uint]string)
 	ni.StreamTypes = make(map[uint]StreamType)
+	ni.StreamOwners = make(map[uint]NodeID)
 
 	ni.GOOS = runtime.GOOS
 	ni.GOARCH = runtime.GOARCH
@@ -202,7 +204,7 @@ func (ni *NodeInfo) RemoveShell(id NodeID) {
 	}
 }
 
-func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string) {
+func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string, owner NodeID) {
 	ni.mutex.Lock()
 	defer ni.mutex.Unlock()
 
@@ -210,6 +212,7 @@ func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string) {
 	ni.StreamIDs[nodeInfoStreamIDsCount] = id
 	ni.StreamTypes[nodeInfoStreamIDsCount] = t
 	ni.StreamInfos[nodeInfoStreamIDsCount] = info
+	ni.StreamOwners[nodeInfoStreamIDsCount] = owner
 }
 
 func (ni *NodeInfo) RemoveStream(id StreamID) {

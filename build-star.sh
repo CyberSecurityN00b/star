@@ -20,15 +20,12 @@ rm -r ./bin
 # Create binary directories
 mkdir ./bin
 mkdir ./bin/agents
-mkdir ./bin/encoded-agents
-mkdir ./bin/encoded-agents/php
 mkdir ./bin/terminals
 
 # Post-build function
 post_build () {
     echo "--- Performing post-build actions on $1"
     upx -9 $1
-    python3 ./postbuild/exe2php.py -f $1 -o ./bin/encoded-agents/php/star-agent-${GOOS}-${GOARCH}.php
 }
 
 # Build agents for all targets

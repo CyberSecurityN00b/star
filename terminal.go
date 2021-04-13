@@ -889,10 +889,6 @@ func terminalCommandJump(context string) (err error) {
 					if agent.Info.StreamTypes[i] == star.StreamTypeCommand || agent.Info.StreamTypes[i] == star.StreamTypeShell {
 						activeStream = id
 						printInfo(fmt.Sprintf("Changing stream focus to %s(%s)", streamname, id))
-						meta, ok := star.GetActiveStream(activeStream)
-						if ok {
-							meta.SendMessageTakeover()
-						}
 					} else {
 						printError(fmt.Sprintf("%s for %s is not a Command/Shell type stream; only Command/Shell type streams can have focus. No stream focus set.", streamname, agent.FriendlyName))
 					}
@@ -1001,7 +997,7 @@ func terminalCommandList(context string) (err error) {
 					focus = ANSIColorize("CURRENT FOCUS", ANSIColor_Focus)
 				}
 
-				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:stream%03d", agent.FriendlyName, i), "\t", agent.Info.StreamIDs[i], "\t", streamtype, "\t", agent.Info.StreamInfos[i], "\t", focus)
+				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:stream%03d\t%s\t%s(%s)\t%s\t%s", agent.FriendlyName, i, agent.Info.StreamIDs[i], streamtype, FriendlyAgentName(agent.Info.StreamOwners[i], star.StreamID{}), agent.Info.StreamInfos[i], focus))
 			}
 			fmt.Fprintln(w, " \t ")
 			w.Flush()
@@ -1186,6 +1182,8 @@ func TerminalProcessMessage(msg *star.Message) {
 	switch msg.Type {
 	case star.MessageTypeError:
 		TerminalProcessMessageError(msg)
+	case star.MessageTypeSyncRequest:
+		TerminalProcessSyncRequest(msg)
 	case star.MessageTypeSyncResponse:
 		TerminalProcessSyncResponse(msg)
 	case star.MessageTypeNewBind:
@@ -1194,8 +1192,6 @@ func TerminalProcessMessage(msg *star.Message) {
 		TerminalProcessMessageNewConnection(msg)
 	case star.MessageTypeHello:
 		TerminalProcessMessageHello(msg)
-	case star.MessageTypeStreamTakenOver:
-		TerminalProcessMessageStreamTakenOver(msg)
 	}
 }
 
@@ -1227,6 +1223,17 @@ func TerminalProcessMessageError(msg *star.Message) {
 		default:
 			printError(fmt.Sprintf("%s has reported: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		}
+	}
+}
+
+func TerminalProcessSyncRequest(msg *star.Message) {
+	var reqMsg star.MessageSyncRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		syncMsg := star.NewMessageSyncResponse()
+		syncMsg.Destination = msg.Source
+		syncMsg.Send(star.ConnectID{})
 	}
 }
 
@@ -1276,37 +1283,12 @@ func TerminalProcessMessageHello(msg *star.Message) {
 	}
 }
 
-func TerminalProcessMessageStreamTakenOver(msg *star.Message) {
-	var resMsg star.MessageStreamTakenOverRequest
-
-	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		streamName := FriendlyAgentName(msg.Source, resMsg.Stream)
-		oldName := FriendlyAgentName(resMsg.OldNode, star.StreamID{})
-		newName := FriendlyAgentName(resMsg.NewNode, star.StreamID{})
-		if star.ThisNode.ID == resMsg.OldNode {
-			// We lost control of the stream
-			printNotice(fmt.Sprintf("Lost control of %s to %s!", streamName, newName))
-			if activeNode == msg.Source && activeStream == resMsg.Stream {
-				printNotice(fmt.Sprintf("%s was active stream, resetting to %s!", streamName, FriendlyAgentName(msg.Source, star.StreamID{})))
-				activeStream = star.StreamID{}
-			}
-		} else if star.ThisNode.ID == resMsg.NewNode {
-			// We gained control of the stream
-			printInfo(fmt.Sprintf("Successfully took control of %s from %s!", streamName, oldName))
-		} else {
-			// We're not involved, but there sure are a lot of terminals in this constellation
-			printInfo(fmt.Sprintf("%s has taken control of %s from %s.", newName, streamName, oldName))
-		}
-	}
-}
-
 func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
 	if stream.IsEmptyStreamID() {
 		if id.IsBroadcastNodeID() {
 			return "?????"
 		} else if id == star.ThisNode.ID {
-			return "Terminal"
+			return "This Terminal"
 		} else {
 			n, ok := agentNodeIDTracker[id]
 			if ok {
@@ -1319,7 +1301,7 @@ func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
 		if id.IsBroadcastNodeID() {
 			return "?????"
 		} else if id == star.ThisNode.ID {
-			return "Terminal"
+			return "This Terminal"
 		} else {
 			n, ok := agentNodeIDTracker[id]
 			if ok {
