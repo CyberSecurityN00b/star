@@ -203,6 +203,8 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandHelp(":c")
 		}
+	case ":clear":
+		terminalCommandClear()
 	case ":d", ":down", ":download":
 		terminalCommandDownload()
 	case ":debug":
@@ -291,7 +293,7 @@ func handleTerminalInput(input string) {
 		}
 	}
 
-	if input[0] == ':' && inputs[0] != "::" && inputs[0] != ":q" {
+	if input[0] == ':' && inputs[0] != "::" && inputs[0] != ":q" && inputs[0] != ":clear" {
 		fmt.Println("\\*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*/")
 	}
 
@@ -390,6 +392,14 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:c` to connect to a TCP TLS listener of another STAR node. <addr> uses the Golang network address format.")
+	case ":clear":
+		fmt.Println("--> COMMAND HELP FOR: :clear")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:clear")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\tClears the terminal screen.")
 	case ":d", ":down", ":download":
 		fmt.Println("--> COMMAND HELP FOR: :d, :down, :download")
 		fmt.Println()
@@ -562,6 +572,7 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":: \t Used to pass commands starting with : to an agent.")
 		fmt.Fprintln(w, ":b :bind \t Creates a STAR listener and binds it.")
 		fmt.Fprintln(w, ":c :connect \t Connects to a STAR listener.")
+		fmt.Fprintln(w, ":clear \t Clears the terminal screen.")
 		fmt.Fprintln(w, ":d :down :download \t Downloads a file from the terminal to the agent.")
 		fmt.Fprintln(w, ":debug \t Causes agents to print debug information.")
 		fmt.Fprintln(w, ":f :file :fileserver \t Creates an HTTP file server listener.")
@@ -760,6 +771,13 @@ func terminalCommandShellConnect(node star.NodeID, address string) {
 		conMsg.Destination = node
 		conMsg.Send(star.ConnectID{})
 	}
+}
+
+func terminalCommandClear() (err error) {
+	// Per https://stackoverflow.com/a/22892171
+	//  - also
+	fmt.Print("\033[H\033[2J")
+	return
 }
 
 func terminalCommandDownload() (err error) {
