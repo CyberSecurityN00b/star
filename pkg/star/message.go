@@ -110,10 +110,6 @@ const (
 	// the termination request of an agent.
 	MessageTypeTerminate
 
-	// MessageTypeFileServer identifies the message as being related to the
-	// creation of a new file server listener.
-	MessageTypeFileServer
-
 	// MessageTypeShellBind identifies the message as being related to the
 	// creation of a new shell listener.
 	MessageTypeShellBind
@@ -328,21 +324,6 @@ func NewMessageTerminate(t MessageTerminateType, index uint) (msg *Message) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/***************************** MessageFileServer *****************************/
-///////////////////////////////////////////////////////////////////////////////
-
-type MessageFileServerRequest struct {
-	Address       string
-	Password      string
-	ParamAgent    string
-	ParamFile     string
-	ParamName     string // For uploads
-	ParamPassword string
-	Agents        map[string]FileID
-	Files         map[string]FileID
-}
-
-///////////////////////////////////////////////////////////////////////////////
 /******************************* MessageShell ********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -391,20 +372,20 @@ func (msg *Message) Send(src ConnectID) {
 			if conn != src {
 				c, ok := connectionTracker[conn]
 				if ok {
-					go c.Send(*msg)
+					c.Send(*msg)
 				}
 			}
 		}
 	} else {
 		c, ok := connectionTracker[dst]
 		if ok {
-			go c.Send(*msg)
+			c.Send(*msg)
 		} else if exists {
 			// Try try again
 			destinationTrackerMutex.Lock()
 			delete(destinationTracker, msg.Destination)
 			destinationTrackerMutex.Unlock()
-			go msg.Send(src)
+			msg.Send(src)
 		}
 	}
 }
@@ -449,7 +430,7 @@ func (msg *Message) Handle(src ConnectID) {
 	// Is the MessageType supposed to be broadcasted or sent to an individual?
 	if msg.Destination.IsBroadcastNodeID() {
 		// Pass it along first and then process
-		go msg.Send(src)
+		msg.Send(src)
 		if ismsg {
 			go msg.HandleStream()
 		} else {
@@ -462,6 +443,6 @@ func (msg *Message) Handle(src ConnectID) {
 			go msg.Process()
 		}
 	} else {
-		go msg.Send(src)
+		msg.Send(src)
 	}
 }

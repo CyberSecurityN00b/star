@@ -336,7 +336,6 @@ func (stream *StreamMeta) Write(p []byte) (n int, err error) {
 			n = len(p)
 		}
 		stream.SendMessageWrite(p[i:n])
-		streamBufferMax = RandDataSize()
 	}
 	return n, nil
 }

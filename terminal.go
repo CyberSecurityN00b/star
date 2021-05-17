@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"embed"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"regexp"
 	"sort"
@@ -82,14 +83,6 @@ func initTerminal() {
 	terminalSettings["info.showenv"] = terminalSetting{false, "Shows environment variables in agent information."}
 	terminalSettings["info.showos"] = terminalSetting{true, "Shows OS information in agent information."}
 	terminalSettings["info.showinterfaces"] = terminalSetting{true, "Shows network interfaces in agent information."}
-	terminalSettings["library.agents"] = terminalSetting{"./agents", "Local directory containing S.T.A.R. agent executables."}
-	terminalSettings["library.library"] = terminalSetting{"./library", "Local directory containing files to share with constellation. Subdirectories are not shared."}
-	terminalSettings["library.loot"] = terminalSetting{"./loot", "Local directory to save files downloaded from agents. Stored in agent-specific subdirectories."}
-	terminalSettings["fileserver.password"] = terminalSetting{star.RandString("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", 8), "Password required to interact with file servers. CAREFUL ABOUT SPECIAL CHARACTERS!"}
-	terminalSettings["fileserver.param.pass"] = terminalSetting{"p", "Parameter the fileserver checks for the password."}
-	terminalSettings["fileserver.param.file"] = terminalSetting{"f", "Parameter the fileserver checks for the library filename."}
-	terminalSettings["fileserver.param.agent"] = terminalSetting{"a", "Parameter the fileserver checks for the agent filename (has precedence over library filename parameter if both are specified)."}
-	terminalSettings["fileserver.param.upload"] = terminalSetting{"n", "Parameter the fileserver checks for the name of the uploaded file for POST requests.."}
 
 	// Setup history
 	historyItems = make(map[uint]historyItem)
@@ -212,10 +205,6 @@ func handleTerminalInput(input string) {
 		}
 	case ":d", ":down", ":download":
 		terminalCommandDownload()
-	case ":debug":
-		terminalCommandDebug()
-	case ":f", ":file", ":fileserver":
-		terminalCommandFileServer()
 	case ":h", ":history":
 		if len(inputs) == 2 {
 			if inputs[1] == "all" {
@@ -260,6 +249,50 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandList("all")
 		}
+	case ":lcd":
+		if len(inputs) == 1 {
+			terminalCommandLocalPresentWorkingDirectory()
+		} else if len(inputs) == 2 {
+			terminalCommandLocalChangeDirectory(inputs[1])
+		} else {
+			terminalCommandHelp(":lcd")
+		}
+	case ":lls", ":ldir":
+		if len(inputs) == 1 {
+			terminalCommandLocalListFiles(".")
+		} else if len(inputs) == 2 {
+			terminalCommandLocalListFiles(inputs[1])
+		} else {
+			terminalCommandHelp(":lls")
+		}
+	case ":lpwd":
+		if len(inputs) == 1 {
+			terminalCommandLocalPresentWorkingDirectory()
+		} else {
+			terminalCommandHelp(":lpwd")
+		}
+	case ":rcd":
+		//if len(inputs) == 1 {
+		//	terminalCommandRemotePresentWorkingDirectory()
+		//} else if len(inputs) == 2 {
+		//	terminalCommandRemoteChangeDirectory(inputs[1])
+		//} else {
+		//	terminalCommandHelp(":rcd")
+		//}
+	case ":rls", ":rdir":
+		//if len(inputs) == 1 {
+		//	terminalCommandRemoteListFiles(".")
+		//} else if len(inputs) == 2 {
+		//	terminalCommandRemoteListFiles(inputs[1])
+		//} else {
+		//	terminalCommandHelp(":rls")
+		//}
+	case ":rpwd":
+		//if len(inputs) == 1 {
+		//	terminalCommandRemotePresentWorkingDirectory()
+		//} else {
+		//	terminalCommandHelp(":rpwd")
+		//}
 	case ":s", ":set", ":setting", ":settings":
 		if len(inputs) == 1 {
 			terminalCommandSet("", "")
@@ -279,6 +312,7 @@ func handleTerminalInput(input string) {
 			terminalCommandHelp(":t")
 		}
 	case ":u", ":up", ":upload":
+
 		terminalCommandUpload()
 	case ":q", ":quit":
 		terminalCommandQuit(nil, "")
@@ -403,28 +437,18 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:d <remote_src_file>                           -  Downloads the remote source file from the active agent to the local directory.")
+		fmt.Println("\t:d /etc/shadow                                 -  Downloads '/etc/shadow' from the active agent to './shadow' locally.")
+		fmt.Println("\t:d <remote_src_file> <local_dst_file>          -  Downloads the remote source file from the active agent to the specific local location.")
+		fmt.Println("\t:d /etc/shadow /tmp/victim.shadow              -  Downloads 'etc/shadow' from the active agent to '/tmp/victim.shadow' locally.")
+		fmt.Println("\t:d <agent> <remote_src_file>                   -  Downloads the remote source file from the specified agent to the local directory.")
+		fmt.Println("\t:d agent002 /etc/shadow                        -  Downloads 'etc/shadow' from agent002 to the local directory.")
+		fmt.Println("\t:d <agent> <remote_src_file> <local_dst_file>  -  Downloads the remote source file from the specified agent to the specified local location.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\t<<<>>>")
-	case ":debug":
-		fmt.Println("--> COMMAND HELP FOR: :debug")
 		fmt.Println()
-		fmt.Println("USAGE: ")
-		fmt.Println("\t:debug")
-		fmt.Println()
-		fmt.Println("DESCRIPTION:")
-		fmt.Println("\tForces nodes to show debugging information. Information subject to change. Command subject to not work at all.")
-	case ":f", ":file", ":fileserver":
-		fmt.Println("--> COMMAND HELP FOR: :f, :file, :fileserver")
-		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
-		fmt.Println("USAGE: ")
-		fmt.Println("\t<<<>>>")
-		fmt.Println()
-		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println(ANSIColorize("NOTE: If multiple security researchers are using the constellation, best practice is to explicitly specify the full file path for the remote file.", ANSIColor_Error))
 	case ":h", ":history":
 		fmt.Println("--> COMMAND HELP FOR: :h, :history")
 		fmt.Println()
@@ -472,6 +496,12 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:l` to list agents, connections, listeners, shells, streams, etc. Also shows how long it has been since an agent has synced.")
+	case ":lcd":
+	case ":lls", ":ldir":
+	case ":lpwd":
+	case ":rcd":
+	case ":rls", ":rdir":
+	case ":rpwd":
 	case ":s", ":set", ":setting", ":settings":
 		fmt.Println("--> COMMAND HELP FOR: :s, :set, :setting, :settings")
 		fmt.Println()
@@ -508,10 +538,18 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\t:u <local_src_file>                            -  Uploads the local source file to the active agent's current directory.")
+		fmt.Println("\t:u webshell.php                                -  Uploads './webshell.php' to the active agent's current directory.")
+		fmt.Println("\t:u <local_src_file> <remote_dst_file>          -  Uploads the local source file to the active agent's specified local location.")
+		fmt.Println("\t:u webshell.php /var/www/html/webshell.php     -  Uploads './webshell.php' to '/var/www/html/webshell.php' on the active agent.")
+		fmt.Println("\t:u <agent> <local_src_file>                    -  Uploads the local source file to the specified agent's current directory.")
+		fmt.Println("\t:u agent002 webshell.php                       -  Uploads './webshell.php' to agent002's current directory.")
+		fmt.Println("\t:u <agent> <local_src_file> <remote_dst_file>  -  Uploads the local source file to the specified file location on the specified agent.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\t<<<>>>")
+		fmt.Println()
+		fmt.Println(ANSIColorize("NOTE: If multiple security researchers are using the constellation, best practice is to explicitly specify the full file path for the remote file.", ANSIColor_Error))
 	case ":q", ":quit":
 		fmt.Println("--> COMMAND HELP FOR: :q, :quit")
 		fmt.Println()
@@ -542,10 +580,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("--> ABOUT CONSTELLATIONS")
 		fmt.Println()
 		fmt.Println("TODO: Write this section when STAR is functional.")
-	case "library", "libraries":
-		fmt.Println("--> ABOUT LIBRARIES")
-		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
 	case "shell", "shells":
 		fmt.Println("--> ABOUT SHELLS")
 		fmt.Println()
@@ -570,13 +604,17 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":b :bind \t Creates a STAR listener and binds it.")
 		fmt.Fprintln(w, ":c :connect \t Connects to a STAR listener.")
 		fmt.Fprintln(w, ":d :down :download \t Downloads a file from the terminal to the agent.")
-		fmt.Fprintln(w, ":debug \t Causes agents to print debug information.")
-		fmt.Fprintln(w, ":f :file :fileserver \t Creates an HTTP file server listener.")
 		fmt.Fprintln(w, ":h :history \t Displays the command history for an agent.")
 		fmt.Fprintln(w, ":i :info :information \t Shows information for a specific agent.")
 		fmt.Fprintln(w, ":j :jump \t Jump (change focus) to another agent.")
 		fmt.Fprintln(w, ":k :kill :killswitch \t Panic button! Destroy and cleanup constellation.")
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
+		fmt.Fprintln(w, ":lcd \t Changes the directory for the local node (e.g., terminal).")
+		fmt.Fprintln(w, ":lls :ldir \t Lists files for the local node (e.g., terminal).")
+		fmt.Fprintln(w, ":lpwd \t Prints the working directory for the local node (e.g., terminal).")
+		fmt.Fprintln(w, ":rcd \t Changes the directory for the remote node (e.g., agent).")
+		fmt.Fprintln(w, ":rls :rdir \t Lists files for the remote node (e.g., agent).")
+		fmt.Fprintln(w, ":rpwd \t Prints the working directory for the remote node (e.g., agent).")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
 		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
 		fmt.Fprintln(w, ":t :terminate \t Terminates an agent, connection, or command.")
@@ -591,7 +629,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("\tagent")
 		fmt.Println("\tconnections")
 		fmt.Println("\tconstellation")
-		fmt.Println("\tlibrary")
 		fmt.Println("\tshells")
 		fmt.Println("\tterminal")
 		w.Flush()
@@ -1010,6 +1047,58 @@ func terminalCommandList(context string) (err error) {
 	return
 }
 
+func terminalCommandLocalChangeDirectory(directory string) (err error) {
+	olddirectory, _ := os.Getwd()
+	os.Chdir(directory)
+	newdirectory, _ := os.Getwd()
+
+	fmt.Println("Change terminal working directory from [", olddirectory, "] to [", newdirectory, "]")
+
+	return
+}
+
+func terminalCommandLocalListFiles(directory string) (err error) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+	files, _ := ioutil.ReadDir(directory)
+
+	// Directories first
+	for _, f := range files {
+		if f.IsDir() {
+			fmt.Fprintln(w, "["+f.Name()+"]", "\t", f.ModTime().Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode(), "\t", f.Size())
+		}
+	}
+
+	// Files second
+	for _, f := range files {
+		if !f.IsDir() {
+			fmt.Fprintln(w, f.Name(), "\t", f.ModTime().Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode(), "\t", f.Size())
+		}
+	}
+
+	w.Flush()
+
+	return
+}
+
+func terminalCommandLocalPresentWorkingDirectory() (err error) {
+	path, _ := os.Getwd()
+	fmt.Println(path)
+
+	return
+}
+
+func terminalCommandRemoteChangeDirectory(node star.NodeID, directory string) (err error) {
+	return
+}
+
+func terminalCommandRemoteListFiles(node star.NodeID, directory string) (err error) {
+	return
+}
+
+func terminalCommandRemotePresentWorkingDirectory(node star.NodeID) (err error) {
+	return
+}
+
 func terminalCommandSet(setting string, value string) (err error) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 	if setting == "" {
@@ -1163,16 +1252,6 @@ func terminalCommandSendCommand(cmd string) (err error) {
 			}
 		}
 	}
-	return
-}
-
-func terminalCommandDebug() {
-	printError("Debug is not yet implemented.")
-	return
-}
-
-func terminalCommandFileServer() {
-	printError("Creating file servers is not yet implemented.")
 	return
 }
 
