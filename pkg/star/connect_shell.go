@@ -184,7 +184,7 @@ func (c Shell_Connection) Handle() {
 		//TODO: Error message here
 		return
 	}
-	meta := NewStreamMetaShell(context, c.Destination, func(data []byte) {
+	meta := NewStreamMetaShell(c.Destination, context, func(data []byte) {
 		c.NetConn.Write(data)
 	}, func(s StreamID) {
 		c.Close()
@@ -192,10 +192,10 @@ func (c Shell_Connection) Handle() {
 	c.StreamID = meta.ID
 
 	for {
-		data := make([]byte, RandDataSize())
-		_, err := c.NetConn.Read(data)
-		if err == nil {
-			meta.Write(data)
+		buff := make([]byte, RandDataSize())
+		n, err := c.NetConn.Read(buff)
+		if err == nil && n > 0 {
+			meta.Write(buff[:n])
 		} else {
 			c.NetConn.Close()
 			return

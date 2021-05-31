@@ -1,6 +1,9 @@
 package star
 
 import (
+	"fmt"
+	"io/fs"
+	"os"
 	"sync"
 	"time"
 )
@@ -117,6 +120,21 @@ const (
 	// MessageTypeShellConnection identifies the message as being related to the
 	// creation of a new shell connection.
 	MessageTypeShellConnection
+
+	// MessageTypeRemoteCD identifies the message as being related to the changing
+	// of the working directory for the remote node (agent).
+	MessageTypeRemoteCDRequest
+	MessageTypeRemoteCDResponse
+
+	// MessageTypeRemoteLS identifies the message as being related to the listing
+	// of files and directories for the remote node (agent).
+	MessageTypeRemoteLSRequest
+	MessageTypeRemoteLSResponse
+
+	// MessageTypeRemotePWD identifies the message as being related to the listing
+	// of the present working directory
+	MessageTypeRemotePWDRequest
+	MessageTypeRemotePWDResponse
 )
 
 func (msg *Message) Process() {
@@ -147,6 +165,10 @@ const (
 	MessageErrorResponseTypeInvalidTerminationIndex
 	MessageErrorResponseTypeCommandEnded
 	MessageErrorResponseTypeShellConnectionLost
+	MessageErrorResponseTypeFileDownloadOpenFileError
+	MessageErrorResponseTypeFileUploadOpenFileError
+	MessageErrorResponseTypeFileDownloadCompleted
+	MessageErrorResponseTypeFileUploadCompleted
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -351,6 +373,112 @@ func NewMessageShellConnectionRequest(t ShellType, address string) (msg *Message
 	msg = NewMessage()
 	msg.Type = MessageTypeShellConnection
 	msg.Data = GobEncode(MessageShellConnectionRequest{Type: t, Address: address, Requester: ThisNode.ID})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** MessageRemoteCD ******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteCDRequest struct {
+	Directory string
+}
+
+type MessageRemoteCDResponse struct {
+	NewDirectory string
+	OldDirectory string
+	Requester    NodeID
+}
+
+func NewMessageTypeRemoteCDRequest(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteCDRequest
+	msg.Data = GobEncode(MessageRemoteCDRequest{Directory: Directory})
+
+	return
+}
+
+func NewMessageTypeRemoteCDResponse(NewDirectory string, OldDirectory string, Requester NodeID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteCDResponse
+	msg.Data = GobEncode(MessageRemoteCDResponse{NewDirectory: NewDirectory, OldDirectory: OldDirectory, Requester: Requester})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** MessageRemoteLS ******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteLSRequest struct {
+	Directory string
+}
+
+type MessageRemoteLSResponse struct {
+	Directory string
+	Files     []MessageRemoteLSFileFormat
+}
+
+type MessageRemoteLSFileFormat struct {
+	Name    string
+	ModTime time.Time
+	Mode    fs.FileMode
+	Size    int64
+	IsDir   bool
+}
+
+func NewMessageTypeRemoteLSRequest(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteLSRequest
+	msg.Data = GobEncode(MessageRemoteLSRequest{Directory: Directory})
+
+	return
+}
+
+func NewMessageTypeRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteLSResponse
+
+	Files := make([]MessageRemoteLSFileFormat, len(FileInfos))
+	for i, f := range FileInfos {
+		Files[i].IsDir = f.IsDir()
+		Files[i].Name = f.Name()
+		Files[i].ModTime = f.ModTime()
+		Files[i].Mode = f.Mode()
+		Files[i].Size = f.Size()
+	}
+
+	msg.Data = GobEncode(MessageRemoteLSResponse{Directory: Directory, Files: Files})
+	fmt.Printf("%v+", Directory)
+	fmt.Printf("%v+", FileInfos)
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** MessageRemotePWD *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemotePWDRequest struct {
+}
+
+type MessageRemotePWDResponse struct {
+	Directory string
+}
+
+func NewMessageTypeRemotePWDRequest() (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemotePWDRequest
+	msg.Data = GobEncode(MessageRemotePWDRequest{})
+
+	return
+}
+
+func NewMessageTypeRemotePWDResponse(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemotePWDResponse
+	msg.Data = GobEncode(MessageRemotePWDResponse{Directory: Directory})
 
 	return
 }
