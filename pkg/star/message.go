@@ -467,6 +467,34 @@ func NewMessageRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (msg 
 	return
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/****************************** MessageRemoteCat ******************************/
+////////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteCatRequest struct {
+	File string
+}
+
+type MessageRemoteCatResponse struct {
+	Content string
+}
+
+func NewMessageRemoteCatRequest(File string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteCatRequest
+	msg.Data = GobEncode(MessageRemoteLSRequest{File: File})
+
+	return
+}
+
+func NewMessageRemoteCatResponse(Content string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteCatResponse
+	msg.Data = GobEncode(MessageRemoteLSRequest{Content: Content})
+	
+	return
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 /***************************** MessageRemoteMkDir ****************************/
 ///////////////////////////////////////////////////////////////////////////////
