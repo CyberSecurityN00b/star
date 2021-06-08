@@ -295,6 +295,12 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandHelp(":lcd")
 		}
+	case ":lcat":
+		if (len(inputs) == 2 {
+			terminalCommandLocalCat(inputs[1+argoffset])
+		} else {
+			terminalCommandHelp(":lcat")	
+		}
 	case ":lls", ":ldir":
 		if len(inputs) == 1 {
 			terminalCommandLocalListFiles(".")
@@ -335,6 +341,18 @@ func handleTerminalInput(input string) {
 				terminalCommandRemoteChangeDirectory(node.Node.ID, inputs[1+argoffset])
 			} else {
 				terminalCommandHelp(":rcd")
+			}
+		}
+	case ":rcat":
+		note, argoffset, ok := remoteAgentCheck()
+		if !ok {
+			terminalCommandHelp(":rcat")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 2 {
+				terminalCommandRemoteCat(node.Node.ID, inputs[1+argoffset])
+			} else {
+				terminalCommandHelp(":rcat")	
 			}
 		}
 	case ":rls", ":rdir":
@@ -1345,6 +1363,10 @@ func terminalCommandLocalMakeTemporaryDirectory() (err error) {
 
 	return
 }
+	
+func terminalCommandLocalCat(file string) (err error) {
+	/* TO DO */		
+}
 
 func terminalCommandRemoteChangeDirectory(node star.NodeID, directory string) (err error) {
 	msg := star.NewMessageRemoteCDRequest(directory)
@@ -1360,6 +1382,10 @@ func terminalCommandRemoteListFiles(node star.NodeID, directory string) (err err
 	msg.Send(star.ConnectID{})
 
 	return
+}
+	
+func terminalCommandRemoteCat(file string) (err error) {
+	/* TO DO */
 }
 
 func terminalCommandRemoteMkDir(node star.NodeID, directory string) (err error) {
