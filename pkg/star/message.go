@@ -131,10 +131,20 @@ const (
 	MessageTypeRemoteLSRequest
 	MessageTypeRemoteLSResponse
 
+	// MessageTypeRemoteMkDir identifies the message as being related to the creation
+	// of a directory for the remote node (agent).
+	MessageTypeRemoteMkDirRequest
+	MessageTypeRemoteMkDirResponse
+
 	// MessageTypeRemotePWD identifies the message as being related to the listing
 	// of the present working directory
 	MessageTypeRemotePWDRequest
 	MessageTypeRemotePWDResponse
+
+	// MessageTypeRemoteTmpDir identifies the message as being related to the creation
+	// of a temporary directory for the remote node (agent.)
+	MessageTypeRemoteTmpDirRequest
+	MessageTypeRemoteTmpDirResponse
 )
 
 func (msg *Message) Process() {
@@ -169,6 +179,7 @@ const (
 	MessageErrorResponseTypeFileUploadOpenFileError
 	MessageErrorResponseTypeFileDownloadCompleted
 	MessageErrorResponseTypeFileUploadCompleted
+	MessageErrorResponseTypeDirectoryCreationError
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -391,7 +402,7 @@ type MessageRemoteCDResponse struct {
 	Requester    NodeID
 }
 
-func NewMessageTypeRemoteCDRequest(Directory string) (msg *Message) {
+func NewMessageRemoteCDRequest(Directory string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemoteCDRequest
 	msg.Data = GobEncode(MessageRemoteCDRequest{Directory: Directory})
@@ -399,7 +410,7 @@ func NewMessageTypeRemoteCDRequest(Directory string) (msg *Message) {
 	return
 }
 
-func NewMessageTypeRemoteCDResponse(NewDirectory string, OldDirectory string, Requester NodeID) (msg *Message) {
+func NewMessageRemoteCDResponse(NewDirectory string, OldDirectory string, Requester NodeID) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemoteCDResponse
 	msg.Data = GobEncode(MessageRemoteCDResponse{NewDirectory: NewDirectory, OldDirectory: OldDirectory, Requester: Requester})
@@ -428,7 +439,7 @@ type MessageRemoteLSFileFormat struct {
 	IsDir   bool
 }
 
-func NewMessageTypeRemoteLSRequest(Directory string) (msg *Message) {
+func NewMessageRemoteLSRequest(Directory string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemoteLSRequest
 	msg.Data = GobEncode(MessageRemoteLSRequest{Directory: Directory})
@@ -436,7 +447,7 @@ func NewMessageTypeRemoteLSRequest(Directory string) (msg *Message) {
 	return
 }
 
-func NewMessageTypeRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (msg *Message) {
+func NewMessageRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemoteLSResponse
 
@@ -457,6 +468,34 @@ func NewMessageTypeRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+/***************************** MessageRemoteMkDir ****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteMkDirRequest struct {
+	Directory string
+}
+
+type MessageRemoteMkDirResponse struct {
+	Directory string
+}
+
+func NewMessageRemoteMkDirRequest(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteMkDirRequest
+	msg.Data = GobEncode(MessageRemoteMkDirRequest{Directory: Directory})
+
+	return
+}
+
+func NewMessageRemoteMkDirResponse(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteMkDirResponse
+	msg.Data = GobEncode(MessageRemoteMkDirResponse{Directory: Directory})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /****************************** MessageRemotePWD *****************************/
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -467,7 +506,7 @@ type MessageRemotePWDResponse struct {
 	Directory string
 }
 
-func NewMessageTypeRemotePWDRequest() (msg *Message) {
+func NewMessageRemotePWDRequest() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemotePWDRequest
 	msg.Data = GobEncode(MessageRemotePWDRequest{})
@@ -475,10 +514,37 @@ func NewMessageTypeRemotePWDRequest() (msg *Message) {
 	return
 }
 
-func NewMessageTypeRemotePWDResponse(Directory string) (msg *Message) {
+func NewMessageRemotePWDResponse(Directory string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemotePWDResponse
 	msg.Data = GobEncode(MessageRemotePWDResponse{Directory: Directory})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/**************************** MessageRemoteTmpDir ****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteTmpDirRequest struct {
+}
+
+type MessageRemoteTmpDirResponse struct {
+	Directory string
+}
+
+func NewMessageRemoteTmpDirRequest() (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteTmpDirRequest
+	msg.Data = GobEncode(MessageRemoteTmpDirRequest{})
+
+	return
+}
+
+func NewMessageRemoteTmpDirResponse(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteTmpDirResponse
+	msg.Data = GobEncode(MessageRemoteTmpDirResponse{Directory: Directory})
 
 	return
 }

@@ -343,7 +343,7 @@ func HandleStreamCreate(msg *Message) {
 			// Terminal is pushing a file to the agent; agent should open file and write to it
 
 			// Open the file
-			f, err := os.OpenFile(meta.Context, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+			f, err := os.OpenFile(meta.Context, os.O_CREATE|os.O_WRONLY|os.O_EXCL|os.O_TRUNC, 0700)
 			if err != nil {
 				NewMessageError(MessageErrorResponseTypeFileUploadOpenFileError, err.Error()).Send(ConnectID{})
 				meta.Close()
@@ -364,7 +364,7 @@ func HandleStreamCreate(msg *Message) {
 			meta.Close()
 		}
 	} else {
-		NewMessageError(MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%s.c", msg.ID))
+		NewMessageError(MessageErrorResponseTypeGobDecodeError, msg.ID.String())
 	}
 }
 

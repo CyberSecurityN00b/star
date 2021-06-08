@@ -30,6 +30,7 @@ post_build () {
 
 # Build agents for all targets
 FAILURES=""
+REMOVEDS=""
 
 echo "Building all agents..."
 
@@ -44,6 +45,10 @@ while IFS= read -r target; do
     post_build "${BIN_FILENAME}"
     echo ""
 done <<< "$(go tool dist list)"
+
+# No point in that wasm...
+rm ./bin/agents/star-agent-js-wasm
+REMOVEDS="${REMOVEDS} agent:js/wasm"
 
 # Build terminal locally
 echo "Building local terminals..."
@@ -66,6 +71,10 @@ while IFS= read -r target; do
     echo ""
 done <<< "$(go tool dist list)"
 
+# No point in that wasm...
+rm ./bin/terminals/star-terminal-js-wasm
+REMOVEDS="${REMOVEDS} agent:js/wasm"
+
 # Cleanup pre-build files
 #rm -f connection.crt
 #rm -f connection.key
@@ -73,6 +82,7 @@ done <<< "$(go tool dist list)"
 if [[ "${FAILURES}" != "" ]]; then
     echo ""
     echo "STAR build failed on: ${FAILURES}"
+    echo "STAR builds deleted : ${REMOVEDS}"
     exit 1
 fi
 
