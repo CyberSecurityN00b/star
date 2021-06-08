@@ -1384,8 +1384,12 @@ func terminalCommandRemoteListFiles(node star.NodeID, directory string) (err err
 	return
 }
 	
-func terminalCommandRemoteCat(file string) (err error) {
-	/* TO DO */
+func terminalCommandRemoteCat(node star.NodeID, file string) (err error) {
+	msg := star.NewMessageRemoteCatRequest(file)
+	msg.Destination = node
+	msg.Send(star.ConnectID{})
+
+	return
 }
 
 func terminalCommandRemoteMkDir(node star.NodeID, directory string) (err error) {
@@ -1644,6 +1648,8 @@ func TerminalProcessMessage(msg *star.Message) {
 		TerminalProcessMessageRemotePWDResponse(msg)
 	case star.MessageTypeRemoteTmpDirResponse:
 		TerminalProcessMessageRemoteTmpDirResponse(msg)
+	case star.MessageTypeRemoteCatResponse:
+		TerminalProcessMessageRemoteCatResponse(msg)	
 	}
 }
 
@@ -1780,6 +1786,10 @@ func TerminalProcessMessageRemoteLSResponse(msg *star.Message) {
 	} else {
 		fmt.Printf("%v+", err)
 	}
+}
+	
+func TerminalProcessMessageRemoteCatResponse(msg *star.Message) {
+	/* To Do */		
 }
 
 func TerminalProcessMessageRemoteMkDirResponse(msg *star.Message) {
