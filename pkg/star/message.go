@@ -130,6 +130,11 @@ const (
 	// of files and directories for the remote node (agent).
 	MessageTypeRemoteLSRequest
 	MessageTypeRemoteLSResponse
+	
+	// MessageTypeRemoteCat identifies the message as being related to the printing
+	// of files for the remote node (agent).
+	MessageTypeRemoteCatRequest
+	MessageTypeRemoteCatResponse
 
 	// MessageTypeRemoteMkDir identifies the message as being related to the creation
 	// of a directory for the remote node (agent).
@@ -482,7 +487,7 @@ type MessageRemoteCatResponse struct {
 func NewMessageRemoteCatRequest(File string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemoteCatRequest
-	msg.Data = GobEncode(MessageRemoteLSRequest{File: File})
+	msg.Data = GobEncode(MessageRemoteCatRequest{File: File})
 
 	return
 }
@@ -490,7 +495,7 @@ func NewMessageRemoteCatRequest(File string) (msg *Message) {
 func NewMessageRemoteCatResponse(Content string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemoteCatResponse
-	msg.Data = GobEncode(MessageRemoteLSRequest{Content: Content})
+	msg.Data = GobEncode(MessageRemoteCatResponse{Content: Content})
 	
 	return
 }
