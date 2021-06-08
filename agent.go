@@ -97,6 +97,8 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessRemotePWDRequest(msg)
 	case star.MessageTypeRemoteTmpDirRequest:
 		AgentProcessRemoteTmpDirRequest(msg)
+	case star.MessageTypeRemoteCatRequest(msg):
+		AgentProcessRemoteCatRequest(msg)	
 	}
 }
 
@@ -271,6 +273,33 @@ func AgentProcessRemoteLSRequest(msg *star.Message) {
 		resMsg := star.NewMessageRemoteLSResponse(reqMsg.Directory, files)
 		resMsg.Destination = msg.Source
 		resMsg.Send(star.ConnectID{})
+	}
+}
+
+func AgentProcessRemoteCatRequest(msg *star.Message) {
+	var reqMsg star.MessageRemoteCatRequest
+	
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		file, err := os.Open(file)
+		if err != nil {
+			printError(fmt.Sprintf("Unable to open file [ %s ]", file))
+			return
+		}
+		
+		bytes, err := ioutil.ReadAll(file)
+		if err != nil {
+			printError(fmt.Sprintf("Unable to read file [ %s ]", file))
+			return	
+		}
+	
+		if err == nil {
+			string := string(bytes[:])
+			
+			resMsg := star.NewMessageRemoteCatResponse(string)
+			resMsg.Destination = msg.Source
+			resMsg.Send(star.ConnectID{})
+		} 	
 	}
 }
 
