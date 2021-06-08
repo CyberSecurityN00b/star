@@ -1384,8 +1384,22 @@ func terminalCommandLocalMakeTemporaryDirectory() (err error) {
 	return
 }
 	
-func terminalCommandLocalCat(file string) (err error) {
-	/* TO DO */		
+func terminalCommandLocalCat(file string) (err error) {	
+	file, err := os.Open(file)
+	if err != nil {
+		printError(fmt.Sprintf("Unable to open file [ %s ]", file))
+		return
+	}
+	
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		printError(fmt.Sprintf("Unable to read file [ %s ]", file))
+		return	
+	}
+	
+	if err == nil {
+		printInfo(fmt.Print(bytes))	
+	}
 }
 
 func terminalCommandRemoteChangeDirectory(node star.NodeID, directory string) (err error) {
