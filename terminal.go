@@ -641,6 +641,16 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\t<<<>>>")
 		fmt.Println()
+	case ":lcat":
+		fmt.Println("--> COMMAND HELP FOR: :lcat")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":lls", ":ldir":
 		fmt.Println("--> COMMAND HELP FOR: :lls, :ldir")
 		fmt.Println()
@@ -684,6 +694,16 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 	case ":rcd":
 		fmt.Println("--> COMMAND HELP FOR: :rcd")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
+	case ":rcat":
+		fmt.Println("--> COMMAND HELP FOR: :rcat")
 		fmt.Println()
 		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
