@@ -1823,7 +1823,13 @@ func TerminalProcessMessageRemoteLSResponse(msg *star.Message) {
 }
 	
 func TerminalProcessMessageRemoteCatResponse(msg *star.Message) {
-	/* To Do */		
+	var resMsg star.MessageRemoteCatResponse
+	
+	err := msg.GobDecodeMessage(&resMsg)
+	if err == nil {
+		content = resMsg.Content
+		printInfo(fmt.Sprintf("%s", content))
+	}
 }
 
 func TerminalProcessMessageRemoteMkDirResponse(msg *star.Message) {
