@@ -242,7 +242,7 @@ func handleTerminalInput(input string) {
 			}
 		}
 	case ":f", ":fs", ":file", ":fileserver":
-		terminalCommandFileServer()
+		//terminalCommandFileServer()
 	case ":h", ":history":
 		if len(inputs) == 2 {
 			if inputs[1] == "all" {
@@ -287,6 +287,14 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandList("all")
 		}
+	case ":lcat":
+		if len(inputs) == 1 {
+			printError("No file specified to cat locally.")
+		} else if len(inputs) == 2 {
+			terminalCommandLocalCat(inputs[1])
+		} else {
+			terminalCommandHelp(":lcat")
+		}
 	case ":lcd":
 		if len(inputs) == 1 {
 			terminalCommandLocalPresentWorkingDirectory()
@@ -322,6 +330,20 @@ func handleTerminalInput(input string) {
 			terminalCommandLocalMakeTemporaryDirectory()
 		} else {
 			terminalCommandHelp(":ltmpdir")
+		}
+	case ":rcat":
+		node, argoffset, ok := remoteAgentCheck()
+		if !ok {
+			terminalCommandHelp(":rcat")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 1 {
+				printError("No file specified to cat remotely.")
+			} else if (len(inputs) - argoffset) == 2 {
+				terminalCommandRemoteCat(node.Node.ID, inputs[1+argoffset])
+			} else {
+				terminalCommandHelp("rcat")
+			}
 		}
 	case ":rcd":
 		node, argoffset, ok := remoteAgentCheck()
@@ -613,6 +635,16 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:l` to list agents, connections, listeners, shells, streams, etc. Also shows how long it has been since an agent has synced.")
+	case ":lcat":
+		fmt.Println("--> COMMAND HELP FOR: :lcat")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
 	case ":lcd":
 		fmt.Println("--> COMMAND HELP FOR: :lcd")
 		fmt.Println()
@@ -656,6 +688,16 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 	case ":ltmpdir":
 		fmt.Println("--> COMMAND HELP FOR: :ltmpdir")
+		fmt.Println()
+		fmt.Println("TODO: Write this section when command is functional.")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t<<<>>>")
+		fmt.Println()
+	case ":rcat":
+		fmt.Println("--> COMMAND HELP FOR: :rcat")
 		fmt.Println()
 		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
@@ -832,6 +874,7 @@ func terminalCommandHelp(topic string) {
 
 		fmt.Println()
 		fmt.Println("=============== Built-In Local Commands  ===============")
+		fmt.Fprintln(w, ":lcat \t Outputs the contents of a local file.")
 		fmt.Fprintln(w, ":lcd \t Changes the directory for the local node.")
 		fmt.Fprintln(w, ":lls :ldir \t Lists files for the local node.")
 		fmt.Fprintln(w, ":lmkdir \t Creates a directory in the local node.")
@@ -841,6 +884,7 @@ func terminalCommandHelp(topic string) {
 
 		fmt.Println()
 		fmt.Println("=============== Built-In Remote Commands ===============")
+		fmt.Fprintln(w, ":rcat \t Outputs the contents of a remote file.")
 		fmt.Fprintln(w, ":rcd \t Changes the directory for the remote node.")
 		fmt.Fprintln(w, ":rls :rdir \t Lists files for the remote node.")
 		fmt.Fprintln(w, ":rmkdir \t Creates a directory on the remote node.")
@@ -903,7 +947,7 @@ func terminalCommandTCPBind(node star.NodeID, address string) {
 
 func terminalCommandShellBind(node star.NodeID, address string) {
 	var a string // Address
-	var s star.ShellType
+	var s star.ConnectorType
 
 	parts := strings.Split(address, ":")
 	if len(parts) == 2 {
@@ -918,15 +962,15 @@ func terminalCommandShellBind(node star.NodeID, address string) {
 
 	switch parts[0] {
 	case "shell", "shell.tcp":
-		s = star.ShellTypeTCP
+		s = star.ConnectorType_ShellTCP
 	case "shell.tls":
-		s = star.ShellTypeTCPTLS
+		s = star.ConnectorType_ShellTCPTLS
 	case "shell.udp":
-		s = star.ShellTypeUDP
+		s = star.ConnectorType_ShellUDP
 	case "shell.wtf":
-		s = star.ShellTypeUDPTLS
+		s = star.ConnectorType_ShellUDPTLS
 	default:
-		printError(fmt.Sprintf("Invalid shell type specifier given. Receved \"%s\", expected one of the following:", parts[0]))
+		printError(fmt.Sprintf("Invalid shell type specifier given. Received \"%s\", expected one of the following:", parts[0]))
 		printError("\tshell")
 		printError("\tshell.tcp")
 		printError("\tshell.tls")
@@ -989,7 +1033,7 @@ func terminalCommandTCPConnect(node star.NodeID, address string) {
 
 func terminalCommandShellConnect(node star.NodeID, address string) {
 	var a string // Address
-	var s star.ShellType
+	var s star.ConnectorType
 
 	parts := strings.Split(address, ":")
 	if len(parts) == 2 {
@@ -1004,13 +1048,13 @@ func terminalCommandShellConnect(node star.NodeID, address string) {
 
 	switch parts[0] {
 	case "shell", "shell.tcp":
-		s = star.ShellTypeTCP
+		s = star.ConnectorType_ShellTCP
 	case "shell.tls":
-		s = star.ShellTypeTCPTLS
+		s = star.ConnectorType_ShellTCPTLS
 	case "shell.udp":
-		s = star.ShellTypeUDP
+		s = star.ConnectorType_ShellUDP
 	case "shell.wtf":
-		s = star.ShellTypeUDPTLS
+		s = star.ConnectorType_ShellUDPTLS
 	default:
 		printError(fmt.Sprintf("Invalid shell type specifier given. Receved \"%s\", expected one of the following:", parts[0]))
 		printError("\tshell")
@@ -1209,7 +1253,7 @@ func terminalCommandList(context string) (err error) {
 			}
 			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 			for _, i := range keys {
-				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:conn%03d", agent.FriendlyName, i), "\t", agent.Info.ConnectionIDs[i], "\t", agent.Info.ConnectionInfos[i])
+				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:conn%03d", agent.FriendlyName, i), "\t", agent.Info.ConnectionIDs[i], "\t", TerminalConnectorTypeToString(agent.Info.ConnectionTypes[i])+agent.Info.ConnectionInfos[i])
 			}
 			fmt.Fprintln(w, " \t ")
 
@@ -1223,7 +1267,7 @@ func terminalCommandList(context string) (err error) {
 			}
 			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 			for _, i := range keys {
-				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:listener%03d", agent.FriendlyName, i), "\t", agent.Info.ListenerIDs[i], "\t", agent.Info.ListenerInfos[i])
+				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:listener%03d", agent.FriendlyName, i), "\t", agent.Info.ListenerIDs[i], "\t", TerminalConnectorTypeToString(agent.Info.ListenerTypes[i])+agent.Info.ListenerInfos[i])
 			}
 			fmt.Fprintln(w, " \t ")
 
@@ -1236,32 +1280,41 @@ func terminalCommandList(context string) (err error) {
 			}
 			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
 			for _, i := range keys {
-				var streamtype string
-				switch agent.Info.StreamTypes[i] {
-				case star.StreamTypeCommand:
-					streamtype = "Command"
-				case star.StreamTypeFileUpload:
-					streamtype = "Upload"
-				case star.StreamTypeFileDownload:
-					streamtype = "Download"
-				case star.StreamTypeShell:
-					streamtype = "Shell"
-				default:
-					streamtype = "Unknown"
-				}
-
 				focus := ""
 				if agent.Info.StreamIDs[i] == activeStream {
 					focus = ANSIColorize("CURRENT FOCUS", ANSIColor_Focus)
 				}
 
-				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:stream%03d\t%s\t%s(%s)\t%s\t%s", agent.FriendlyName, i, agent.Info.StreamIDs[i], streamtype, FriendlyAgentName(agent.Info.StreamOwners[i], star.StreamID{}), agent.Info.StreamInfos[i], focus))
+				fmt.Fprintln(w, "    ", fmt.Sprintf("%s:stream%03d\t%s\t%s(%s)\t%s\t%s", agent.FriendlyName, i, agent.Info.StreamIDs[i], TerminalStreamTypeToString(agent.Info.StreamTypes[i]), FriendlyAgentName(agent.Info.StreamOwners[i], star.StreamID{}), agent.Info.StreamInfos[i], focus))
 			}
 			fmt.Fprintln(w, " \t ")
 			w.Flush()
 		} else {
 			go terminalCommandList("all")
 			printError(fmt.Sprintf("%s is not a valid identifier! Use one of the following!", context))
+		}
+	}
+
+	return
+}
+
+func terminalCommandLocalCat(src string) (err error) {
+	// Kinda like "terminalCommandUpload", except we just print instead of use messages
+	f, err := os.Open(src)
+	if err != nil {
+		printError(fmt.Sprintf("Error attempting to open local file [ %s ] for output: %v", src, err))
+		return
+	}
+	defer f.Close()
+
+	r := bufio.NewReader(f)
+	for {
+		buff := make([]byte, star.RandDataSize())
+		n, err := r.Read(buff)
+		if err == nil && n > 0 {
+			fmt.Printf("%s", buff[:n])
+		} else {
+			break
 		}
 	}
 
@@ -1309,7 +1362,7 @@ func terminalCommandLocalMakeDirectory(directory string) (err error) {
 
 	err = os.MkdirAll(directory, 0700)
 	if err != nil {
-		printError(fmt.Sprintf("Unable to create local directory: %s.", err.Error()))
+		printError(fmt.Sprintf("Unable to create local directory: [ %s ].", err.Error()))
 		return
 	}
 
@@ -1342,6 +1395,15 @@ func terminalCommandLocalMakeTemporaryDirectory() (err error) {
 	if err == nil {
 		printInfo(fmt.Sprintf("Changed working directory to [ %s ].", dir))
 	}
+
+	return
+}
+
+func terminalCommandRemoteCat(node star.NodeID, src string) (err error) {
+	// Same as "terminalCommandDownload", just print instead of save
+	star.NewStreamMetaDownload(node, src, func(data []byte) {
+		fmt.Printf("%s", data)
+	}, func(s star.StreamID) {})
 
 	return
 }
@@ -1513,7 +1575,7 @@ func terminalCommandUpload(node star.NodeID, src string, dst string) (err error)
 		// Open the file
 		f, err := os.Open(src)
 		if err != nil {
-			printError(fmt.Sprintf("Error attempting to open local file %s to upload: %v", src, err))
+			printError(fmt.Sprintf("Error attempting to open local file [ %s ] to upload: %v", src, err))
 			return
 		}
 		defer f.Close()
@@ -1537,7 +1599,40 @@ func terminalCommandUpload(node star.NodeID, src string, dst string) (err error)
 	return
 }
 
-func terminalCommandFileServer() {
+func terminalCommandFileServer(node star.NodeID, src string, address string) {
+	go func() {
+		// Open the file
+		f, err := os.Open(src)
+		if err != nil {
+			printError(fmt.Sprintf("Error attempting to open local file [ %s ] for file-server: %v", src, err))
+			return
+		}
+		defer f.Close()
+
+		// File server stream!
+		meta := star.NewStreamMetaServer(node, address, func(data []byte) {}, func(s star.StreamID) {})
+		r := bufio.NewReader(f)
+		firstpass := true
+		for {
+			size := star.RandDataSize()
+			if firstpass {
+				// If this is the first pass, send a single byte; this is because the agent stream for this will
+				// be 'paused' after opening up the port until a request is made. No point in wasting space on the
+				// agent machine.
+				size = 1
+			}
+			buff := make([]byte, size)
+			n, err := r.Read(buff)
+			if err == nil && n > 0 {
+				meta.Write(buff[:n])
+			} else {
+				break
+			}
+		}
+
+		meta.Close()
+	}()
+
 	return
 }
 
@@ -1977,5 +2072,55 @@ func TerminalSanitizeFilepath(fp string) (res string) {
 	for _, s := range []string{"/", "\\"} {
 		res = strings.Replace(res, s, "-", -1)
 	}
+	return
+}
+
+// TerminalConnectorTypeToString coverts the star.ConnectorType byte to a human-readable format.
+// Used in terminal.go to avoid string IOCs in the agent
+func TerminalConnectorTypeToString(t star.ConnectorType) (res string) {
+	switch t {
+	case star.ConnectorType_FileServerTCP:
+		res = "[file][tcp]"
+	case star.ConnectorType_FileServerTCPTLS:
+		res = "[file][tcp.tls]"
+	case star.ConnectorType_FileServerUDP:
+		res = "[file][udp]"
+	case star.ConnectorType_FileServerUDPTLS:
+		res = "[file][udp.tls]"
+	case star.ConnectorType_ShellTCP:
+		res = "[shell][tcp]"
+	case star.ConnectorType_ShellTCPTLS:
+		res = "[shell][tcp.tls]"
+	case star.ConnectorType_ShellUDP:
+		res = "[shell][udp]"
+	case star.ConnectorType_ShellUDPTLS:
+		res = "[shell][udp.tls]"
+	case star.ConnectorType_TCPTLS:
+		res = "[tcp.tls]"
+	default:
+		res = "[unk]"
+	}
+
+	return
+}
+
+// TerminalStreamTypeToString converts the star.StreamType byte to a human-readable format.
+// Used in terminal.go to avoid string IOCs in the agent
+func TerminalStreamTypeToString(t star.StreamType) (res string) {
+	switch t {
+	case star.StreamTypeCommand:
+		res = "Command"
+	case star.StreamTypeFileDownload:
+		res = "Download"
+	case star.StreamTypeFileServer:
+		res = "FileServer"
+	case star.StreamTypeFileUpload:
+		res = "Upload"
+	case star.StreamTypeShell:
+		res = "Shell"
+	default:
+		res = "Unknown"
+	}
+
 	return
 }

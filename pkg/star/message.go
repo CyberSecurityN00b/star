@@ -256,7 +256,7 @@ func newMessageBind(t ConnectorType, gobEncodedData []byte) (msg *Message) {
 }
 
 func NewMessageBindTCP(address string) (msg *Message) {
-	return newMessageBind(ConnectorTypeTCP, GobEncode(address))
+	return newMessageBind(ConnectorType_TCPTLS, GobEncode(address))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -277,7 +277,7 @@ func newMessageConnect(t ConnectorType, gobEncodedData []byte) (msg *Message) {
 }
 
 func NewMessageConnectTCP(address string) (msg *Message) {
-	return newMessageConnect(ConnectorTypeTCP, GobEncode(address))
+	return newMessageConnect(ConnectorType_TCPTLS, GobEncode(address))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -362,17 +362,17 @@ func NewMessageTerminate(t MessageTerminateType, index uint) (msg *Message) {
 
 type MessageShellBindRequest struct {
 	Address   string
-	Type      ShellType
+	Type      ConnectorType
 	Requester NodeID
 }
 
 type MessageShellConnectionRequest struct {
 	Address   string
-	Type      ShellType
+	Type      ConnectorType
 	Requester NodeID
 }
 
-func NewMessageShellBindRequest(t ShellType, address string) (msg *Message) {
+func NewMessageShellBindRequest(t ConnectorType, address string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeShellBind
 	msg.Data = GobEncode(MessageShellBindRequest{Type: t, Address: address, Requester: ThisNode.ID})
@@ -380,7 +380,7 @@ func NewMessageShellBindRequest(t ShellType, address string) (msg *Message) {
 	return
 }
 
-func NewMessageShellConnectionRequest(t ShellType, address string) (msg *Message) {
+func NewMessageShellConnectionRequest(t ConnectorType, address string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeShellConnection
 	msg.Data = GobEncode(MessageShellConnectionRequest{Type: t, Address: address, Requester: ThisNode.ID})

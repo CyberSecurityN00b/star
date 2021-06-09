@@ -65,9 +65,19 @@ func (id ConnectID) String() string {
 type ConnectorType byte
 
 const (
-	// ConnectorTypeTCP is used by the terminal to tell an agent that a TCP
+	// ConnectorType_TCPTLS is used by the terminal to tell an agent that a TCP
 	// connector should be used when requesting a bind or a connect.
-	ConnectorTypeTCP ConnectorType = iota + 1
+	ConnectorType_TCPTLS ConnectorType = iota + 1
+
+	ConnectorType_ShellTCP
+	ConnectorType_ShellTCPTLS
+	ConnectorType_ShellUDP
+	ConnectorType_ShellUDPTLS
+
+	ConnectorType_FileServerTCP
+	ConnectorType_FileServerTCPTLS
+	ConnectorType_FileServerUDP
+	ConnectorType_FileServerUDPTLS
 )
 
 ///////////////////////////////////////////////////////////////////////////////

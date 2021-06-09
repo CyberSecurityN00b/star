@@ -2,6 +2,7 @@ package star
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"os"
@@ -97,6 +98,14 @@ func NewStreamMetaDownload(dstID NodeID, context string, writer func(data []byte
 
 func NewStreamMetaUpload(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
 	meta = NewStreamMeta(StreamTypeFileUpload, dstID, context)
+	meta.funcwriter = writer
+	meta.funccloser = closer
+	go meta.SendMessageCreate()
+	return
+}
+
+func NewStreamMetaServer(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypeFileServer, dstID, context)
 	meta.funcwriter = writer
 	meta.funccloser = closer
 	go meta.SendMessageCreate()
@@ -216,6 +225,7 @@ type StreamType byte
 const (
 	StreamTypeCommand StreamType = iota + 1
 	StreamTypeFileDownload
+	StreamTypeFileServer
 	StreamTypeFileUpload
 	StreamTypeShell
 )
@@ -360,6 +370,25 @@ func HandleStreamCreate(msg *Message) {
 				NewMessageError(MessageErrorResponseTypeFileUploadCompleted, name).Send(ConnectID{})
 				f.Close()
 			}
+		case StreamTypeFileServer:
+			go func() {
+				// Terminal is pushing a file to the agent; agent should serve the file on the specified port
+				// Context is the address to create a listener on
+
+				// Listen on the port
+				_, err := tls.Listen("tcp", meta.Context, ConnectionConfig)
+				if err != nil {
+					NewMessageError(0, err.Error()).Send(ConnectID{})
+					return
+				}
+
+				// Defer cleanup for when listener ends
+				defer func() {
+					recover()
+					NewMessageError(0, err.Error()).Send(ConnectID{})
+
+				}()
+			}()
 		default:
 			meta.Close()
 		}

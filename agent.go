@@ -106,7 +106,7 @@ func AgentProcessBind(msg *star.Message) {
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
 		switch reqMsg.Type {
-		case star.ConnectorTypeTCP:
+		case star.ConnectorType_TCPTLS:
 			var address string
 			var b bytes.Buffer
 
@@ -129,7 +129,7 @@ func AgentProcessConnect(msg *star.Message) {
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
 		switch reqMsg.Type {
-		case star.ConnectorTypeTCP:
+		case star.ConnectorType_TCPTLS:
 			var address string
 			var b bytes.Buffer
 

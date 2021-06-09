@@ -9,14 +9,14 @@ import (
 )
 
 type Shell_Connector struct {
-	Type      ShellType
+	Type      ConnectorType
 	Address   string
 	Listener  *net.Listener
 	Requester NodeID
 }
 
 type Shell_Connection struct {
-	Type        ShellType
+	Type        ConnectorType
 	NetConn     net.Conn
 	TLSConn     *tls.Conn
 	ConnectID   ConnectID
@@ -24,20 +24,11 @@ type Shell_Connection struct {
 	Destination NodeID
 }
 
-type ShellType byte
-
-const (
-	ShellTypeTCP ShellType = iota + 1
-	ShellTypeTCPTLS
-	ShellTypeUDP
-	ShellTypeUDPTLS
-)
-
-func NewShellConnection(address string, t ShellType, requester NodeID) {
+func NewShellConnection(address string, t ConnectorType, requester NodeID) {
 	go (&Shell_Connector{Address: address, Type: t, Requester: requester}).Connect()
 }
 
-func NewShellListener(address string, t ShellType, requester NodeID) {
+func NewShellListener(address string, t ConnectorType, requester NodeID) {
 	go (&Shell_Connector{Address: address, Type: t, Requester: requester}).Listen()
 }
 
@@ -52,13 +43,13 @@ func (connector *Shell_Connector) Connect() (err error) {
 	var n net.Conn
 	var t *tls.Conn
 	switch connector.Type {
-	case ShellTypeTCP:
+	case ConnectorType_ShellTCP:
 		n, err = net.Dial("tcp", connector.Address)
-	case ShellTypeTCPTLS:
+	case ConnectorType_ShellTCPTLS:
 		t, err = tls.Dial("tcp", connector.Address, &tls.Config{InsecureSkipVerify: true})
-	case ShellTypeUDP:
+	case ConnectorType_ShellUDP:
 		n, err = net.Dial("udp", connector.Address)
-	case ShellTypeUDPTLS:
+	case ConnectorType_ShellUDPTLS:
 		t, err = tls.Dial("udp", connector.Address, &tls.Config{InsecureSkipVerify: true})
 	default:
 		//TODO: Error message here
@@ -68,6 +59,7 @@ func (connector *Shell_Connector) Connect() (err error) {
 	if err != nil {
 		fmt.Println(err.Error())
 		NewMessageError(0, err.Error()).Send(ConnectID{})
+		return
 	}
 
 	conn.NetConn = n
@@ -80,20 +72,15 @@ func (connector *Shell_Connector) Connect() (err error) {
 
 func (connector *Shell_Connector) Listen() (err error) {
 	var l net.Listener
-	var info string
 	switch connector.Type {
-	case ShellTypeTCP:
+	case ConnectorType_ShellTCP:
 		l, err = net.Listen("tcp", connector.Address)
-		info = fmt.Sprintf("[shell][tcp]%s", connector.Address)
-	case ShellTypeTCPTLS:
+	case ConnectorType_ShellTCPTLS:
 		l, err = tls.Listen("tcp", connector.Address, &tls.Config{InsecureSkipVerify: true})
-		info = fmt.Sprintf("[shell][tcp/tls]%s", connector.Address)
-	case ShellTypeUDP:
+	case ConnectorType_ShellUDP:
 		l, err = net.Listen("udp", connector.Address)
-		info = fmt.Sprintf("[shell][udp]%s", connector.Address)
-	case ShellTypeUDPTLS:
+	case ConnectorType_ShellUDPTLS:
 		l, err = tls.Listen("udp", connector.Address, &tls.Config{InsecureSkipVerify: true})
-		info = fmt.Sprintf("[shell][udp/tls]%s", connector.Address)
 	default:
 		//TODO: Error message here
 		return io.ErrClosedPipe
@@ -107,7 +94,7 @@ func (connector *Shell_Connector) Listen() (err error) {
 
 	connector.Listener = &l
 	id := RegisterListener(connector)
-	ThisNodeInfo.AddListener(id, info)
+	ThisNodeInfo.AddListener(id, connector.Type, connector.Address)
 
 	// Defer cleanup for when listener ends
 	defer func() {
@@ -143,7 +130,7 @@ func (connector *Shell_Connector) Close() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/****************************** Shell Connector ******************************/
+/****************************** Shell Connection *****************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 func (c Shell_Connection) Handle() {
@@ -167,18 +154,18 @@ func (c Shell_Connection) Handle() {
 
 	// Notify of new connection
 	NewConnection(addr).Send(ConnectID{})
-	ThisNodeInfo.AddConnector(c.ConnectID, addr)
+	ThisNodeInfo.AddConnector(c.ConnectID, c.Type, addr)
 
 	// Setup new stream
 	var context string
 	switch c.Type {
-	case ShellTypeTCP:
+	case ConnectorType_ShellTCP:
 		context = fmt.Sprintf("shell[tcp][%s]", addr)
-	case ShellTypeTCPTLS:
+	case ConnectorType_ShellTCPTLS:
 		context = fmt.Sprintf("shell[tcp/tls][%s]", addr)
-	case ShellTypeUDP:
+	case ConnectorType_ShellUDP:
 		context = fmt.Sprintf("shell[udp][%s]", addr)
-	case ShellTypeUDPTLS:
+	case ConnectorType_ShellUDPTLS:
 		context = fmt.Sprintf("shell[udp/tls][%s]", addr)
 	default:
 		//TODO: Error message here

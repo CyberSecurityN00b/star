@@ -55,14 +55,13 @@ func (connector *TCP_Connector) Connect() (err error) {
 func (connector *TCP_Connector) Listen() error {
 	l, err := tls.Listen("tcp", connector.Address, ConnectionConfig)
 	if err != nil {
-		fmt.Println(err.Error())
 		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return err
 	}
 
 	connector.Listener = &l
 	id := RegisterListener(connector)
-	ThisNodeInfo.AddListener(id, fmt.Sprintf("[tcp]%s", connector.Address))
+	ThisNodeInfo.AddListener(id, ConnectorType_TCPTLS, connector.Address)
 
 	// Defer cleanup for when listener ends
 	defer func() {
@@ -118,7 +117,7 @@ func (c TCP_Connection) Handle() {
 
 	// Notify of new connection
 	NewConnection(addr).Send(ConnectID{})
-	ThisNodeInfo.AddConnector(c.ID, addr)
+	ThisNodeInfo.AddConnector(c.ID, ConnectorType_TCPTLS, addr)
 
 	for {
 		msg := &Message{}
