@@ -121,6 +121,18 @@ const (
 	// creation of a new shell connection.
 	MessageTypeShellConnection
 
+	// MessageTypeFileServerBind identifies the message as being related to the
+	// creation of a new single-use file server.
+	MessageTypeFileServerBind
+
+	// MessageTypeFileServerConnection identifies the message as being related to the
+	// creation of a new file server connection.
+	MessageTypeFileServerConnect
+
+	// MessageTypeFileServerInitiateTransfer identifies the message as being related to
+	// the transfer initiation of a file server file.
+	MessageTypeFileServerInitiateTransfer
+
 	// MessageTypeRemoteCD identifies the message as being related to the changing
 	// of the working directory for the remote node (agent).
 	MessageTypeRemoteCDRequest
@@ -145,6 +157,9 @@ const (
 	// of a temporary directory for the remote node (agent.)
 	MessageTypeRemoteTmpDirRequest
 	MessageTypeRemoteTmpDirResponse
+
+	// MessageTypeChat identifies the message as being related to chatting
+	MessageTypeChat
 )
 
 func (msg *Message) Process() {
@@ -180,6 +195,7 @@ const (
 	MessageErrorResponseTypeFileDownloadCompleted
 	MessageErrorResponseTypeFileUploadCompleted
 	MessageErrorResponseTypeDirectoryCreationError
+	MessageErrorResponseTypeFileServerConnectionLost
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -389,6 +405,53 @@ func NewMessageShellConnectionRequest(t ConnectorType, address string) (msg *Mes
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+/***************************** MessageFileServer *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageFileServerBindRequest struct {
+	Address    string
+	Type       ConnectorType
+	Requester  NodeID
+	FileConnID ConnectID
+}
+
+type MessageFileServerConnectRequest struct {
+	Address    string
+	Type       ConnectorType
+	Requester  NodeID
+	FileConnID ConnectID
+}
+
+type MessageFileServerInitiateTransferRequest struct {
+	FileConnID  ConnectID
+	AgentConnID ConnectID
+}
+
+func NewMessageFileServerBindRequest(t ConnectorType, address string, fileconnid ConnectID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileServerBind
+	msg.Data = GobEncode(MessageFileServerBindRequest{Type: t, Address: address, Requester: ThisNode.ID, FileConnID: fileconnid})
+
+	return
+}
+
+func NewMessageFileServerConnectRequest(t ConnectorType, address string, fileconnid ConnectID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileServerConnect
+	msg.Data = GobEncode(MessageFileServerConnectRequest{Type: t, Address: address, Requester: ThisNode.ID, FileConnID: fileconnid})
+
+	return
+}
+
+func NewMessageFileServerInitiateTransferRequest(FileConnID ConnectID, AgentConnID ConnectID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileServerInitiateTransfer
+	msg.Data = GobEncode(MessageFileServerInitiateTransferRequest{FileConnID: FileConnID, AgentConnID: AgentConnID})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /****************************** MessageRemoteCD ******************************/
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -545,6 +608,23 @@ func NewMessageRemoteTmpDirResponse(Directory string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeRemoteTmpDirResponse
 	msg.Data = GobEncode(MessageRemoteTmpDirResponse{Directory: Directory})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************** MessageChat ********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageChatRequest struct {
+	Nickname string
+	Content  string
+}
+
+func NewMessageChatRequest(Nickname string, Content string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeChat
+	msg.Data = GobEncode(MessageChatRequest{Nickname: Nickname, Content: Content})
 
 	return
 }

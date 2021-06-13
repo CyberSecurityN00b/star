@@ -125,7 +125,11 @@ func (c TCP_Connection) Handle() {
 		if err == nil {
 			go msg.Handle(c.ID)
 		} else if err == io.EOF {
-			c.NetConn.Close()
+			if c.TLSConn != nil {
+				c.TLSConn.Close()
+			} else {
+				c.NetConn.Close()
+			}
 			return
 		}
 	}
@@ -140,6 +144,15 @@ func (c TCP_Connection) Send(msg Message) (err error) {
 	return
 }
 
+func (c TCP_Connection) Write(data []byte) (n int, err error) {
+	if c.TLSConn != nil {
+		n, err = c.TLSConn.Write(data)
+	} else if c.NetConn != nil {
+		n, err = c.NetConn.Write(data)
+	}
+	return
+}
+
 func (c TCP_Connection) Close() {
 	if c.NetConn != nil {
 		c.NetConn.Close()
@@ -147,4 +160,6 @@ func (c TCP_Connection) Close() {
 	if c.TLSConn != nil {
 		c.TLSConn.Close()
 	}
+	UnregisterConnection(c.ID)
+	ThisNodeInfo.RemoveConnector(c.ID)
 }

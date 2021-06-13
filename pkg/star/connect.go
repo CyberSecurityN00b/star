@@ -3,7 +3,6 @@ package star
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -13,6 +12,7 @@ type Connection interface {
 	Handle()
 	MessageDuration() time.Duration
 	Send(msg Message) (err error)
+	Write(data []byte) (n int, err error)
 	Close()
 }
 
@@ -94,12 +94,23 @@ func RegisterConnection(conn Connection) ConnectID {
 	return id
 }
 
-func GetConnection(connID ConnectID) (c Connection, ok bool) {
+func GetConnectionById(connID ConnectID) (c Connection, ok bool) {
 	connectionTrackerMutex.Lock()
 	defer connectionTrackerMutex.Unlock()
 
 	c, ok = connectionTracker[connID]
-	fmt.Println(connectionTracker)
+	return
+}
+
+func GetConnectionByString(connID string) (c Connection, ok bool) {
+	connectionTrackerMutex.Lock()
+	defer connectionTrackerMutex.Unlock()
+
+	for i := range connectionTracker {
+		if i.String() == connID {
+			c, ok = connectionTracker[i]
+		}
+	}
 	return
 }
 

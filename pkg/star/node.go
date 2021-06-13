@@ -48,9 +48,7 @@ type NodeInfo struct {
 }
 
 var nodeInfoConnectionIDsCount uint
-var nodeInfoFileServerIDsCount uint
 var nodeInfoListenerIDsCount uint
-var nodeInfoShellIDsCount uint
 var nodeInfoStreamIDsCount uint
 
 var ThisNode Node

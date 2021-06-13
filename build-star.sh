@@ -73,7 +73,7 @@ done <<< "$(go tool dist list)"
 
 # No point in that wasm...
 rm ./bin/terminals/star-terminal-js-wasm
-REMOVEDS="${REMOVEDS} agent:js/wasm"
+REMOVEDS="${REMOVEDS} terminal:js/wasm"
 
 # Cleanup pre-build files
 #rm -f connection.crt

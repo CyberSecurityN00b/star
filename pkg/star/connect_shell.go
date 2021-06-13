@@ -2,7 +2,6 @@ package star
 
 import (
 	"crypto/tls"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -19,7 +18,7 @@ type Shell_Connection struct {
 	Type        ConnectorType
 	NetConn     net.Conn
 	TLSConn     *tls.Conn
-	ConnectID   ConnectID
+	ID          ConnectID
 	StreamID    StreamID
 	Destination NodeID
 }
@@ -52,12 +51,10 @@ func (connector *Shell_Connector) Connect() (err error) {
 	case ConnectorType_ShellUDPTLS:
 		t, err = tls.Dial("udp", connector.Address, &tls.Config{InsecureSkipVerify: true})
 	default:
-		//TODO: Error message here
 		return io.ErrClosedPipe
 	}
 
 	if err != nil {
-		fmt.Println(err.Error())
 		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return
 	}
@@ -65,7 +62,7 @@ func (connector *Shell_Connector) Connect() (err error) {
 	conn.NetConn = n
 	conn.TLSConn = t
 	conn.Type = connector.Type
-	conn.ConnectID = RegisterConnection(conn)
+	conn.ID = RegisterConnection(conn)
 	go conn.Handle()
 	return
 }
@@ -82,12 +79,10 @@ func (connector *Shell_Connector) Listen() (err error) {
 	case ConnectorType_ShellUDPTLS:
 		l, err = tls.Listen("udp", connector.Address, &tls.Config{InsecureSkipVerify: true})
 	default:
-		//TODO: Error message here
 		return io.ErrClosedPipe
 	}
 
 	if err != nil {
-		fmt.Println(err.Error())
 		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return err
 	}
@@ -112,7 +107,6 @@ func (connector *Shell_Connector) Listen() (err error) {
 		conn = new(Shell_Connection)
 		c, err := l.Accept()
 		if err != nil {
-			fmt.Println(err.Error())
 			NewMessageError(0, err.Error()).Send(ConnectID{})
 			return err
 		}
@@ -120,7 +114,7 @@ func (connector *Shell_Connector) Listen() (err error) {
 		conn.NetConn = c
 		conn.Type = connector.Type
 		conn.Destination = connector.Requester
-		conn.ConnectID = RegisterConnection(conn)
+		conn.ID = RegisterConnection(conn)
 		go conn.Handle()
 	}
 }
@@ -147,31 +141,17 @@ func (c Shell_Connection) Handle() {
 	defer func() {
 		recover()
 		NewMessageError(MessageErrorResponseTypeShellConnectionLost, addr).Send(ConnectID{})
-		UnregisterConnection(c.ConnectID)
 		ActiveStreams[c.StreamID].Close()
-		ThisNodeInfo.RemoveConnector(c.ConnectID)
+		UnregisterConnection(c.ID)
+		ThisNodeInfo.RemoveConnector(c.ID)
 	}()
 
 	// Notify of new connection
 	NewConnection(addr).Send(ConnectID{})
-	ThisNodeInfo.AddConnector(c.ConnectID, c.Type, addr)
+	ThisNodeInfo.AddConnector(c.ID, c.Type, addr)
 
 	// Setup new stream
-	var context string
-	switch c.Type {
-	case ConnectorType_ShellTCP:
-		context = fmt.Sprintf("shell[tcp][%s]", addr)
-	case ConnectorType_ShellTCPTLS:
-		context = fmt.Sprintf("shell[tcp/tls][%s]", addr)
-	case ConnectorType_ShellUDP:
-		context = fmt.Sprintf("shell[udp][%s]", addr)
-	case ConnectorType_ShellUDPTLS:
-		context = fmt.Sprintf("shell[udp/tls][%s]", addr)
-	default:
-		//TODO: Error message here
-		return
-	}
-	meta := NewStreamMetaShell(c.Destination, context, func(data []byte) {
+	meta := NewStreamMetaShell(c.Destination, addr, func(data []byte) {
 		c.NetConn.Write(data)
 	}, func(s StreamID) {
 		c.Close()
@@ -180,11 +160,15 @@ func (c Shell_Connection) Handle() {
 
 	for {
 		buff := make([]byte, RandDataSize())
-		n, err := c.NetConn.Read(buff)
+		n, err := c.Write(buff)
 		if err == nil && n > 0 {
 			meta.Write(buff[:n])
 		} else {
-			c.NetConn.Close()
+			if c.TLSConn != nil {
+				c.TLSConn.Close()
+			} else {
+				c.NetConn.Close()
+			}
 			return
 		}
 	}
@@ -198,6 +182,15 @@ func (c Shell_Connection) Send(msg Message) (err error) {
 	return
 }
 
+func (c Shell_Connection) Write(data []byte) (n int, err error) {
+	if c.TLSConn != nil {
+		n, err = c.TLSConn.Write(data)
+	} else if c.NetConn != nil {
+		n, err = c.NetConn.Write(data)
+	}
+	return
+}
+
 func (c Shell_Connection) Close() {
 	if c.NetConn != nil {
 		c.NetConn.Close()
@@ -205,4 +198,6 @@ func (c Shell_Connection) Close() {
 	if c.TLSConn != nil {
 		c.TLSConn.Close()
 	}
+	UnregisterConnection(c.ID)
+	ThisNodeInfo.RemoveConnector(c.ID)
 }

@@ -97,6 +97,10 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessRemotePWDRequest(msg)
 	case star.MessageTypeRemoteTmpDirRequest:
 		AgentProcessRemoteTmpDirRequest(msg)
+	case star.MessageTypeFileServerBind:
+		AgentProcessFileServerBind(msg)
+	case star.MessageTypeFileServerConnect:
+		AgentProcessFileServerConnect(msg)
 	}
 }
 
@@ -185,7 +189,7 @@ func AgentProcessTerminateRequest(msg *star.Message) {
 			if !ok {
 				invalid = true
 			} else {
-				conn, ok := star.GetConnection(id)
+				conn, ok := star.GetConnectionById(id)
 				if !ok {
 					invalid = true
 				} else {
@@ -332,6 +336,24 @@ func AgentProcessRemoteTmpDirRequest(msg *star.Message) {
 			resMsg := star.NewMessageRemoteTmpDirResponse(directory)
 			resMsg.Send(star.ConnectID{})
 		}
+	}
+}
+
+func AgentProcessFileServerBind(msg *star.Message) {
+	var reqMsg star.MessageFileServerBindRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		star.NewFileServerListener(reqMsg.Address, reqMsg.Type, msg.Source, reqMsg.FileConnID)
+	}
+}
+
+func AgentProcessFileServerConnect(msg *star.Message) {
+	var reqMsg star.MessageFileServerConnectRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		star.NewFileServerConnection(reqMsg.Address, reqMsg.Type, msg.Source, reqMsg.FileConnID)
 	}
 }
 
