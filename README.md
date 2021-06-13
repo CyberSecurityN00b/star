@@ -9,7 +9,7 @@ The inspiration for the tool is due to the author working on HackTheBox's Dante 
 ## Installation
 
 1. _It is assumed that you already have the latest version of golang installed on your machine._
-1. Clone the repository to your local machine with `git clone git@github.com:CyberSecurityN00b/star.git`
+1. Clone the repository to your local machine with `git clone https://github.com/CyberSecurityN00b/star.git`
 1. From within the repository, run `./build-star.sh`
 1. You should now have a batch of agents (in `./bin/agents/`) and terminals (in `./bin/terminals/`); additionally, you will have a terminal compiled for your local machine at `./bin/star_terminal`.
 
