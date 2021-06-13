@@ -245,6 +245,8 @@ func handleTerminalInput(input string) {
 		} else {
 			printError("Empty chat message, not sending to constellation.")
 		}
+	case ":clear":
+		terminalCommandClear()
 	case ":d", ":down", ":download":
 		node, argoffset, ok := remoteAgentCheck()
 		if !ok {
@@ -481,7 +483,7 @@ func handleTerminalInput(input string) {
 		}
 	}
 
-	if input[0] == ':' && inputs[0] != "::" && inputs[0] != ":q" {
+	if input[0] == ':' && inputs[0] != "::" && inputs[0] != ":q" && inputs[0] != ":clear" {
 		fmt.Println("\\*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*/")
 	}
 
@@ -604,6 +606,14 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:c` to connect to a TCP TLS listener of another STAR node. <addr> uses the Golang network address format.")
+	case ":clear":
+		fmt.Println("--> COMMAND HELP FOR: :clear")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:clear")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\tClears the terminal screen.")
 	case ":d", ":down", ":download":
 		fmt.Println("--> COMMAND HELP FOR: :d, :down, :download")
 		fmt.Println()
@@ -891,7 +901,8 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":: \t Used to pass commands starting with : to an agent.")
 		fmt.Fprintln(w, ":b :bind \t Creates a STAR listener and binds it.")
 		fmt.Fprintln(w, ":c :connect \t Connects to a STAR listener.")
-		fmt.Fprintln(w, ":d :down :download \t Downloads a file from the agent to the terminal.")
+		fmt.Fprintln(w, ":clear \t Clears the terminal screen.")
+		fmt.Fprintln(w, ":d :down :download \t Downloads a file from the terminal to the agent.")
 		fmt.Fprintln(w, ":h :history \t Displays the command history for an agent.")
 		fmt.Fprintln(w, ":i :info :information \t Shows information for a specific agent.")
 		fmt.Fprintln(w, ":j :jump \t Jump (change focus) to another agent.")
@@ -1192,6 +1203,12 @@ func terminalCommandFileServerConnect(node star.NodeID, address string) {
 		printError(fmt.Sprintf("Cannot create shell listeners on terminal nodes!"))
 		return
 	}
+
+func terminalCommandClear() (err error) {
+	// Per https://stackoverflow.com/a/22892171
+	//  - also
+	fmt.Print("\033[H\033[2J")
+	return
 }
 
 func terminalCommandHistory(all bool, node star.NodeID, stream star.StreamID) (err error) {
