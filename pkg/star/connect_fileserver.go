@@ -150,6 +150,11 @@ func (c FileServer_Connection) Handle() {
 
 	// Request transfer initiation
 	NewMessageFileServerInitiateTransferRequest(c.FileConnID, c.ID).Send(ConnectID{})
+
+	// Perform a read so this works with tools like wget, and not just netcat
+	// (Do this after the transfer request so netcat still works)
+	buff := make([]byte, RandDataSize())
+	c.Read(buff)
 }
 
 func (c FileServer_Connection) MessageDuration() (d time.Duration) {

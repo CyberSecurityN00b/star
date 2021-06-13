@@ -28,7 +28,7 @@ _Note: Until all features are developed, nodes will not enforce the requirement 
 | **Listener** | A listener is an open port waiting for one or more connections. These may be S.T.A.R. connections, shell connections, or requests to fileservers. |
 | **Node** | A node is either an agent or terminal that is part of the S.T.A.R. constellation. |
 | **Shell** | Shells allow for a remote computer to connect to the constellation using netcat or similar. These are useful where a S.T.A.R. node is not appropriate for the device or the security researcher has not yet attained post-exploitation status on the device. Note: Shells only allow the security researcher to run commands on the device, S.T.A.R. commands do not work with shells. |
-| **Stream** | A stream is used for I/O within the constellatoin. Streams are used by shells, fileservers, and RCE commands.  |
+| **Stream** | A stream is used for I/O within the constellation. Streams are used by shells, fileservers, and RCE commands.  |
 | **Terminal** | A terminal is a node that is used to interact with agents in the constellation. A terminal should be used instead of an agent where RCE is not intend, such as a proxy point controlled by the security researcher. |
 
 ## Using
