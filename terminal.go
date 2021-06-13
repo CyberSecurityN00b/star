@@ -2332,6 +2332,7 @@ func HistoryChatPop() {
 ///////////////////////////////////////////////////////////////////////////////
 var logFile *os.File
 var logCSV *csv.Writer
+var logMutex *sync.Mutex
 
 func SetupRecordLog() {
 	var err error
@@ -2344,6 +2345,8 @@ func SetupRecordLog() {
 	logCSV = csv.NewWriter(logFile)
 	logCSV.Write([]string{"Timestamp", "Node", "Context", "SubContext", "Content"})
 	logCSV.Flush()
+
+	logMutex = &sync.Mutex{}
 }
 
 func RecordLog(timestamp time.Time, node star.NodeID, context string, subcontext string, content string) {
@@ -2377,7 +2380,8 @@ func RecordLog(timestamp time.Time, node star.NodeID, context string, subcontext
 		}
 
 		// If we've gotten here, log away!
-		print(content)
+		logMutex.Lock()
+		defer logMutex.Unlock()
 		logCSV.Write([]string{timestamp.Format(terminalSettings["display.timestamp"].Data.(string)), node.String(), context, subcontext, content})
 		logCSV.Flush()
 	}

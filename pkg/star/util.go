@@ -107,7 +107,7 @@ func ParameterHandling() {
 }
 
 func RandDataSize() int {
-	min := 12345
+	min := 23456
 	max := 65432
 	mrand.Seed(time.Now().UnixNano())
 	return mrand.Intn(max-min+1) + min
