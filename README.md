@@ -1,6 +1,8 @@
-<p align="center"><img src="./_imgs/startarot.jpg" alt="STAR Tarot Card" width="300"/><br/></p>
+<p align="center"><img src="./_imgs/startarot.jpg" alt="S.T.A.R. Tarot Card" width="300"/><br/></p>
 
 # **S**imple **T**actical **A**gent **R**elay (**STAR**)
+
+<p align="center"><img src="./_imgs/star_title.png" alt="S.T.A.R. Title Screen"/></p>
 
 S.T.A.R. is intended as a post-exploitation framework for ethical hackers and security researchers. It serves as a sort of peer-to-peer C2, and can be used in environments with no/partial internet access.
 
@@ -21,15 +23,15 @@ _Note: Until all features are developed, nodes will not enforce the requirement 
 
 | Term | Definition |
 | --- | --- |
-| **Agent** | An agent is a node that is placed on a remote computer for post-exploitaiton purposes. Agents should only be placed on computers where RCE is intended. If RCE is not intended, use a terminal instead. |
-| **Connection** | A connection is an existing link between S.T.A.R. nodes or, in the case of fileservers and shells, an external 3rd party. |
+| **Agent** | An agent is a node that is placed on a remote computer for post-exploitaiton purposes. Agents should only be placed on computers where RCE is intended. If RCE is not intended, use a terminal instead.<br/><br/>An example agent reading-friendly identifier is `agent001`.|
+| **Connection** | A connection is an existing link between S.T.A.R. nodes or, in the case of fileservers and shells, an external 3rd party.<br/><br/>An example connection reading-friendly identifier is `agent001:conn001`.|
 | **Constellation** | A collection of interconnected agent/terminal nodes. Best practice is to create a separate constellation per engagement. |
 | **FileServer** | A S.T.A.R. fileserver allows for an agent to serve a file that is located elsewhere within the constellation. The file is not transferred until the request is made, and is not saved to the agent's local file system. |
-| **Listener** | A listener is an open port waiting for one or more connections. These may be S.T.A.R. connections, shell connections, or requests to fileservers. |
+| **Listener** | A listener is an open port waiting for one or more connections. These may be S.T.A.R. connections, shell connections, or requests to fileservers.<br/><br/>An example listener reading-friendly identifier is `agent001:listener001`.|
 | **Node** | A node is either an agent or terminal that is part of the S.T.A.R. constellation. |
-| **Shell** | Shells allow for a remote computer to connect to the constellation using netcat or similar. These are useful where a S.T.A.R. node is not appropriate for the device or the security researcher has not yet attained post-exploitation status on the device. Note: Shells only allow the security researcher to run commands on the device, S.T.A.R. commands do not work with shells. |
-| **Stream** | A stream is used for I/O within the constellation. Streams are used by shells, fileservers, and RCE commands.  |
-| **Terminal** | A terminal is a node that is used to interact with agents in the constellation. A terminal should be used instead of an agent where RCE is not intend, such as a proxy point controlled by the security researcher. |
+| **Shell** | Shells allow for a remote computer to connect to the constellation using netcat or similar. These are useful where a S.T.A.R. node is not appropriate for the device or the security researcher has not yet attained post-exploitation status on the device. Note: Shells only allow the security researcher to run commands on the device, S.T.A.R. commands do not work with shells.|
+| **Stream** | A stream is used for I/O within the constellation. Streams are used by shells, fileservers, and RCE commands.<br/><br/>An example stream reading-friendly identifier is `agent001:stream001`.|
+| **Terminal** | A terminal is a node that is used to interact with agents in the constellation. A terminal should be used instead of an agent where RCE is not intend, such as a proxy point controlled by the security researcher.<br/><br/>An example terminal reading-friendly identifier is `term001`. <i>Note: Connection, listener, and stream identifiers for other terminals will not be visible to your terminal. This is by design.</i>|
 
 ## Using
 
@@ -44,7 +46,11 @@ When either agents or terminals are run, connection instructions can be passed a
 
 All of the above commands can be combined, i.e.: `star_agent b:12345 b:10.10.10.10:111 c:www.example.com:8080`. In this instance, the agent will attempt all specified listeners and connections, in addition to the hard-coded ones.
 
+<p align="center"><img src="./_imgs/star_params.png" alt="S.T.A.R. Parameter Connection Example"/></p>
+
 ## Commands
+
+<p align="center"><img src="./_imgs/star_help.png" alt="S.T.A.R. Help Screen"/></p>
 
 S.T.A.R. Commands:
 | Commands | Description |
