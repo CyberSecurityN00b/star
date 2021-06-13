@@ -1,15 +1,16 @@
 package star
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
-
-const streamBufferMax int = 10000
 
 type Stream struct {
 	ID   StreamID
@@ -17,15 +18,20 @@ type Stream struct {
 }
 
 type StreamMeta struct {
-	ID            StreamID
-	remoteNodeID  NodeID
-	Type          StreamType
+	ID           StreamID
+	remoteNodeID NodeID
+	Type         StreamType
+	// Context is the command to run for command execution, and agent's file system file path/name for upload/download
 	Context       string
 	writelock     *sync.Mutex
 	stdin         io.WriteCloser
 	funcwriter    func([]byte)
 	funccloser    func(StreamID)
 	functerminate func()
+}
+
+type StreamTakeover struct {
+	ID StreamID
 }
 
 var ActiveStreams map[StreamID]*StreamMeta
@@ -67,17 +73,41 @@ func NewStreamMetaMirror(metaOrig *StreamMeta, dstID NodeID) (metaNew *StreamMet
 
 func NewStreamMetaCommand(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
 	meta = NewStreamMeta(StreamTypeCommand, dstID, context)
-	go meta.SendMessageCreate()
 	meta.funcwriter = writer
 	meta.funccloser = closer
+	go meta.SendMessageCreate()
 	return
 }
 
-func NewStreamMetaShell(context string, dstID NodeID, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+func NewStreamMetaShell(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
 	meta = NewStreamMeta(StreamTypeShell, dstID, context)
-	go meta.SendMessageCreate()
 	meta.funcwriter = writer
 	meta.funccloser = closer
+	go meta.SendMessageCreate()
+	return
+}
+
+func NewStreamMetaDownload(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypeFileDownload, dstID, context)
+	meta.funcwriter = writer
+	meta.funccloser = closer
+	go meta.SendMessageCreate()
+	return
+}
+
+func NewStreamMetaUpload(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypeFileUpload, dstID, context)
+	meta.funcwriter = writer
+	meta.funccloser = closer
+	go meta.SendMessageCreate()
+	return
+}
+
+func NewStreamMetaFileServer(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypeFileServer, dstID, context)
+	meta.funcwriter = writer
+	meta.funccloser = closer
+	go meta.SendMessageCreate()
 	return
 }
 
@@ -128,14 +158,19 @@ func (meta *StreamMeta) SendMessageWrite(data []byte) {
 }
 
 func (meta *StreamMeta) Close() {
+
 	if meta.functerminate != nil {
 		meta.functerminate()
 	}
 	if meta.funccloser != nil {
 		meta.funccloser(meta.ID)
 	}
-	meta.SendMessageClose()
 	RemoveActiveStream(meta.ID)
+
+	// Wrapping in a delayed functions since streams were occasionally closing before the last packet of data was handled.
+	time.AfterFunc(1*time.Second, func() {
+		meta.SendMessageClose()
+	})
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -147,7 +182,7 @@ func NewActiveStream(tracker *StreamMeta) {
 
 	id := tracker.ID
 	ActiveStreams[id] = tracker
-	ThisNodeInfo.AddStream(tracker.ID, tracker.Type, tracker.Context)
+	ThisNodeInfo.AddStream(tracker.ID, tracker.Type, tracker.Context, tracker.remoteNodeID)
 }
 
 func GetActiveStream(id StreamID) (tracker *StreamMeta, ok bool) {
@@ -188,8 +223,9 @@ type StreamType byte
 
 const (
 	StreamTypeCommand StreamType = iota + 1
-	StreamTypeFileUpload
 	StreamTypeFileDownload
+	StreamTypeFileServer
+	StreamTypeFileUpload
 	StreamTypeShell
 )
 
@@ -276,14 +312,79 @@ func HandleStreamCreate(msg *Message) {
 			meta.funcwriter = func(data []byte) {
 				fmt.Printf("%s", data)
 			}
-			meta.functerminate = func() {
+			meta.functerminate = func() {}
+		case StreamTypeFileDownload:
+			// Terminal is requesting a file from the agent; agent should open file and send it
 
+			// Open the file
+			f, err := os.Open(meta.Context)
+			if err != nil {
+				NewMessageError(MessageErrorResponseTypeFileDownloadOpenFileError, err.Error()).Send(ConnectID{})
+				meta.Close()
+				break
+			}
+			r := bufio.NewReader(f)
+
+			meta.funcwriter = func(data []byte) {}
+			meta.functerminate = func() {
+				// Close the file
+				f.Close()
+			}
+
+			// Read from the file
+			go func() {
+				for {
+					buff := make([]byte, RandDataSize())
+					n, err := r.Read(buff)
+					if err == nil && n > 0 {
+						meta.Write(buff[:n])
+					} else {
+						break
+					}
+				}
+				name, _ := filepath.Abs(f.Name())
+				NewMessageError(MessageErrorResponseTypeFileDownloadCompleted, name).Send(ConnectID{})
+				meta.Close()
+			}()
+		case StreamTypeFileUpload:
+			// Terminal is pushing a file to the agent; agent should open file and write to it
+
+			// Open the file
+			f, err := os.OpenFile(meta.Context, os.O_CREATE|os.O_WRONLY|os.O_EXCL|os.O_TRUNC, 0700)
+			if err != nil {
+				NewMessageError(MessageErrorResponseTypeFileUploadOpenFileError, err.Error()).Send(ConnectID{})
+				meta.Close()
+				break
+			}
+			name, _ := filepath.Abs(f.Name())
+
+			meta.funcwriter = func(data []byte) {
+				// Write to the file
+				f.Write(data)
+			}
+			meta.functerminate = func() {
+				// Close the file
+				NewMessageError(MessageErrorResponseTypeFileUploadCompleted, name).Send(ConnectID{})
+				f.Close()
+			}
+		case StreamTypeFileServer:
+			c, ok := GetConnectionByString(meta.Context)
+			if !ok {
+				print("Error!")
+				break
+			}
+
+			meta.funcwriter = func(data []byte) {
+				c.Write(data)
+			}
+			meta.functerminate = func() {
+				c.Close()
 			}
 		default:
 			meta.Close()
 		}
 	} else {
-		NewMessageError(MessageErrorResponseTypeGobDecodeError, fmt.Sprintf("%s.c", msg.ID))
+		NewMessageError(MessageErrorResponseTypeGobDecodeError, msg.ID.String())
 	}
 }
 
@@ -295,7 +396,9 @@ func HandleStreamFlow(msg *Message) {
 	if err == nil {
 		stream, ok := GetActiveStream(streamMsg.ID)
 		if ok {
-			stream.funcwriter(streamMsg.Data)
+			if stream.funcwriter != nil {
+				stream.funcwriter(streamMsg.Data)
+			}
 			stream.SendMessageAcknowledge()
 		} else {
 			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamFlow")
@@ -327,6 +430,7 @@ func HandleStreamClose(msg *Message) {
 ///////////////////////////////////////////////////////////////////////////////
 
 func (stream *StreamMeta) Write(p []byte) (n int, err error) {
+	streamBufferMax := RandDataSize()
 	for i := 0; i < len(p); i += streamBufferMax {
 		n = i + streamBufferMax
 		if n > len(p) {

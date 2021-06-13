@@ -18,12 +18,13 @@ type Node struct {
 type NodeInfo struct {
 	ConnectionIDs   map[uint]ConnectID
 	ConnectionInfos map[uint]string
+	ConnectionTypes map[uint]ConnectorType
 	ListenerIDs     map[uint]ConnectID
 	ListenerInfos   map[uint]string
-	ShellIDs        map[uint]NodeID
-	ShellInfos      map[uint]string
+	ListenerTypes   map[uint]ConnectorType
 	StreamIDs       map[uint]StreamID
 	StreamInfos     map[uint]string
+	StreamOwners    map[uint]NodeID
 	StreamTypes     map[uint]StreamType
 
 	GOOS   string
@@ -48,7 +49,6 @@ type NodeInfo struct {
 
 var nodeInfoConnectionIDsCount uint
 var nodeInfoListenerIDsCount uint
-var nodeInfoShellIDsCount uint
 var nodeInfoStreamIDsCount uint
 
 var ThisNode Node
@@ -109,13 +109,14 @@ func (ni *NodeInfo) Setup() {
 
 	ni.ConnectionIDs = make(map[uint]ConnectID)
 	ni.ConnectionInfos = make(map[uint]string)
+	ni.ConnectionTypes = make(map[uint]ConnectorType)
 	ni.ListenerIDs = make(map[uint]ConnectID)
 	ni.ListenerInfos = make(map[uint]string)
-	ni.ShellIDs = make(map[uint]NodeID)
-	ni.ShellInfos = make(map[uint]string)
+	ni.ListenerTypes = make(map[uint]ConnectorType)
 	ni.StreamIDs = make(map[uint]StreamID)
 	ni.StreamInfos = make(map[uint]string)
 	ni.StreamTypes = make(map[uint]StreamType)
+	ni.StreamOwners = make(map[uint]NodeID)
 
 	ni.GOOS = runtime.GOOS
 	ni.GOARCH = runtime.GOARCH
@@ -139,13 +140,14 @@ func (ni *NodeInfo) Update() {
 	ni.Interfaces, _ = net.Interfaces()
 }
 
-func (ni *NodeInfo) AddConnector(id ConnectID, info string) {
+func (ni *NodeInfo) AddConnector(id ConnectID, t ConnectorType, info string) {
 	ni.mutex.Lock()
 	defer ni.mutex.Unlock()
 
 	nodeInfoConnectionIDsCount++
 	ni.ConnectionIDs[nodeInfoConnectionIDsCount] = id
 	ni.ConnectionInfos[nodeInfoConnectionIDsCount] = info
+	ni.ConnectionTypes[nodeInfoConnectionIDsCount] = t
 }
 
 func (ni *NodeInfo) RemoveConnector(id ConnectID) {
@@ -156,17 +158,19 @@ func (ni *NodeInfo) RemoveConnector(id ConnectID) {
 		if c == id {
 			delete(ni.ConnectionIDs, i)
 			delete(ni.ConnectionInfos, i)
+			delete(ni.ConnectionTypes, i)
 		}
 	}
 }
 
-func (ni *NodeInfo) AddListener(id ConnectID, info string) {
+func (ni *NodeInfo) AddListener(id ConnectID, t ConnectorType, info string) {
 	ni.mutex.Lock()
 	defer ni.mutex.Unlock()
 
 	nodeInfoListenerIDsCount++
 	ni.ListenerIDs[nodeInfoListenerIDsCount] = id
 	ni.ListenerInfos[nodeInfoListenerIDsCount] = info
+	ni.ListenerTypes[nodeInfoListenerIDsCount] = t
 }
 
 func (ni *NodeInfo) RemoveListener(id ConnectID) {
@@ -177,32 +181,12 @@ func (ni *NodeInfo) RemoveListener(id ConnectID) {
 		if l == id {
 			delete(ni.ListenerIDs, i)
 			delete(ni.ListenerInfos, i)
+			delete(ni.ListenerTypes, i)
 		}
 	}
 }
 
-func (ni *NodeInfo) AddShell(id NodeID, info string) {
-	ni.mutex.Lock()
-	defer ni.mutex.Unlock()
-
-	nodeInfoShellIDsCount++
-	ni.ShellIDs[nodeInfoShellIDsCount] = id
-	ni.ShellInfos[nodeInfoShellIDsCount] = info
-}
-
-func (ni *NodeInfo) RemoveShell(id NodeID) {
-	ni.mutex.Lock()
-	defer ni.mutex.Unlock()
-
-	for i, s := range ni.ShellIDs {
-		if s == id {
-			delete(ni.ShellIDs, i)
-			delete(ni.ShellInfos, i)
-		}
-	}
-}
-
-func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string) {
+func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string, owner NodeID) {
 	ni.mutex.Lock()
 	defer ni.mutex.Unlock()
 
@@ -210,6 +194,7 @@ func (ni *NodeInfo) AddStream(id StreamID, t StreamType, info string) {
 	ni.StreamIDs[nodeInfoStreamIDsCount] = id
 	ni.StreamTypes[nodeInfoStreamIDsCount] = t
 	ni.StreamInfos[nodeInfoStreamIDsCount] = info
+	ni.StreamOwners[nodeInfoStreamIDsCount] = owner
 }
 
 func (ni *NodeInfo) RemoveStream(id StreamID) {

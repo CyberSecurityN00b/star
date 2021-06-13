@@ -7,9 +7,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	mrand "math/rand"
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // NewUID fills a byte array with random data
@@ -102,4 +104,20 @@ func ParameterHandling() {
 			}
 		}
 	}
+}
+
+func RandDataSize() int {
+	min := 1024
+	max := 10240
+	mrand.Seed(time.Now().UnixNano())
+	return mrand.Intn(max-min+1) + min
+}
+
+func RandString(seed string, n int) string {
+	b := make([]byte, n)
+	mrand.Seed(time.Now().UnixNano())
+	for i := range b {
+		b[i] = seed[mrand.Intn(len(seed))]
+	}
+	return string(b)
 }

