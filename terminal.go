@@ -43,7 +43,7 @@ func main() {
 
 func showWelcomeText() {
 
-	fmt.Println("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
+	fmt.Println("/*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*\\")
 	fmt.Println("*             _____        _____           ___        ______                  |")
 	fmt.Println("|            /  ___|      |_   _|         / _ \\       | ___ \\                 *")
 	fmt.Println("*            \\  --.         | |          / /_\\ \\      | |_/ /                 |")
@@ -51,7 +51,7 @@ func showWelcomeText() {
 	fmt.Println("*            /\\__/ /        | |          | | | |      | |\\ \\                  |")
 	fmt.Println("|            \\____/ imple   \\_/ actical  \\_| |_/ gent \\_| \\_| elay            *")
 	fmt.Println("*                                                                             |")
-	fmt.Println("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
+	fmt.Println("\\*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*/")
 	fmt.Println("")
 }
 
@@ -113,7 +113,7 @@ func initTerminal() {
 		for {
 			select {
 			case <-tickerSynchronization.C:
-				TerminalSynchronize()
+				TerminalSynchronize(false)
 
 				next := terminalSettings["sync.minutes"].Data.(int64)
 				if next >= 1 {
@@ -441,7 +441,7 @@ func handleTerminalInput(input string) {
 			terminalCommandSet(inputs[1], star.StringifySubarray(inputs, 2, len(inputs)))
 		}
 	case ":sync":
-		TerminalSynchronize()
+		TerminalSynchronize(true)
 	case ":t", ":terminate":
 		if len(inputs) == 1 {
 			terminalCommandTerminate("")
@@ -910,6 +910,7 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":: \t Used to pass commands starting with : to an agent.")
 		fmt.Fprintln(w, ":b :bind \t Creates a STAR listener and binds it.")
 		fmt.Fprintln(w, ":c :connect \t Connects to a STAR listener.")
+		fmt.Fprintln(w, ":chat \t Chat with other security researchers in the constellation.")
 		fmt.Fprintln(w, ":clear \t Clears the terminal screen.")
 		fmt.Fprintln(w, ":d :down :download \t Downloads a file from the terminal to the agent.")
 		fmt.Fprintln(w, ":h :history \t Displays the command history for an agent.")
@@ -1453,8 +1454,8 @@ func terminalCommandList(context string) (err error) {
 			fmt.Fprintln(w, " \t ")
 			w.Flush()
 		} else {
-			go terminalCommandList("all")
 			printError(fmt.Sprintf("%s is not a valid identifier! Use one of the following!", context))
+			terminalCommandList("all")
 		}
 	}
 
@@ -1956,7 +1957,7 @@ func TerminalProcessMessageNewBind(msg *star.Message) {
 	}
 
 	// Resynchronize
-	TerminalSynchronize()
+	TerminalSynchronize(false)
 }
 
 func TerminalProcessMessageNewConnection(msg *star.Message) {
@@ -1968,7 +1969,7 @@ func TerminalProcessMessageNewConnection(msg *star.Message) {
 	}
 
 	// Resynchronize
-	TerminalSynchronize()
+	TerminalSynchronize(false)
 }
 
 func TerminalProcessMessageHello(msg *star.Message) {
@@ -2140,8 +2141,10 @@ func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
 	}
 }
 
-func TerminalSynchronize() {
-	printInfo("Synchronizing with agents...")
+func TerminalSynchronize(showmsg bool) {
+	if !terminalSettings["sync.mute"].Data.(bool) || showmsg {
+		printInfo("Synchronizing with agents...")
+	}
 	syncMsg := star.NewMessageSyncRequest()
 	syncMsg.Send(star.ConnectID{})
 	AgentTrackerUpdateInfo(&star.ThisNode, &star.ThisNodeInfo)

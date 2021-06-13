@@ -24,6 +24,7 @@ type StreamMeta struct {
 	// Context is the command to run for command execution, and agent's file system file path/name for upload/download
 	Context       string
 	writelock     *sync.Mutex
+	writelocked   bool
 	stdin         io.WriteCloser
 	funcwriter    func([]byte)
 	funccloser    func(StreamID)
@@ -123,6 +124,7 @@ func (meta *StreamMeta) SendMessageCreate() {
 	msg.Send(ConnectID{})
 
 	meta.writelock.Lock()
+	meta.writelocked = true
 }
 
 func (meta *StreamMeta) SendMessageAcknowledge() {
@@ -154,6 +156,7 @@ func (meta *StreamMeta) SendMessageWrite(data []byte) {
 	msg.Destination = meta.remoteNodeID
 	msg.Source = ThisNode.ID
 	meta.writelock.Lock()
+	meta.writelocked = true
 	msg.Send(ConnectID{})
 }
 
@@ -251,8 +254,9 @@ func HandleStreamAcknowledge(msg *Message) {
 	err := msg.GobDecodeMessage(&streamMsg)
 	if err == nil {
 		meta, ok := GetActiveStream(streamMsg.ID)
-		if ok {
+		if ok && meta.writelocked {
 			meta.writelock.Unlock()
+			meta.writelocked = false
 		}
 	}
 }

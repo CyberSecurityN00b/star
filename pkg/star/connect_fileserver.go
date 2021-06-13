@@ -160,6 +160,15 @@ func (c FileServer_Connection) Send(msg Message) (err error) {
 	return
 }
 
+func (c FileServer_Connection) Read(data []byte) (n int, err error) {
+	if c.TLSConn != nil {
+		n, err = c.TLSConn.Read(data)
+	} else if c.NetConn != nil {
+		n, err = c.NetConn.Read(data)
+	}
+	return
+}
+
 func (c FileServer_Connection) Write(data []byte) (n int, err error) {
 	if c.TLSConn != nil {
 		n, err = c.TLSConn.Write(data)

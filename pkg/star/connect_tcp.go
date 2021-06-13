@@ -144,6 +144,15 @@ func (c TCP_Connection) Send(msg Message) (err error) {
 	return
 }
 
+func (c TCP_Connection) Read(data []byte) (n int, err error) {
+	if c.TLSConn != nil {
+		n, err = c.TLSConn.Read(data)
+	} else if c.NetConn != nil {
+		n, err = c.NetConn.Read(data)
+	}
+	return
+}
+
 func (c TCP_Connection) Write(data []byte) (n int, err error) {
 	if c.TLSConn != nil {
 		n, err = c.TLSConn.Write(data)

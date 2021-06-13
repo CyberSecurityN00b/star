@@ -62,6 +62,7 @@ func (connector *Shell_Connector) Connect() (err error) {
 	conn.NetConn = n
 	conn.TLSConn = t
 	conn.Type = connector.Type
+	conn.Destination = connector.Requester
 	conn.ID = RegisterConnection(conn)
 	go conn.Handle()
 	return
@@ -160,7 +161,7 @@ func (c Shell_Connection) Handle() {
 
 	for {
 		buff := make([]byte, RandDataSize())
-		n, err := c.Write(buff)
+		n, err := c.Read(buff)
 		if err == nil && n > 0 {
 			meta.Write(buff[:n])
 		} else {
@@ -179,6 +180,15 @@ func (c Shell_Connection) MessageDuration() (d time.Duration) {
 }
 
 func (c Shell_Connection) Send(msg Message) (err error) {
+	return
+}
+
+func (c Shell_Connection) Read(data []byte) (n int, err error) {
+	if c.TLSConn != nil {
+		n, err = c.TLSConn.Read(data)
+	} else if c.NetConn != nil {
+		n, err = c.NetConn.Read(data)
+	}
 	return
 }
 
