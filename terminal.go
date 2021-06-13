@@ -96,7 +96,7 @@ func initTerminal() {
 	terminalSettings["log.commands"] = terminalSetting{true, "Determines if commands are logged."}
 	terminalSettings["log.errors"] = terminalSetting{true, "Determines if agent errors are logged."}
 	terminalSettings["log.notices"] = terminalSetting{true, "Determines if agent notices are logged."}
-	terminalSettings["log.output"] = terminalSetting{true, "Determines if terminal output is logged."}
+	terminalSettings["log.output"] = terminalSetting{true, "Determines if terminal output is logged. Does not apply to command output."}
 	terminalSettings["log.sync"] = terminalSetting{true, "Determines if synchronization activity is logged."}
 
 	// Setup history
@@ -947,6 +947,8 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":j :jump \t Jump (change focus) to another agent.")
 		fmt.Fprintln(w, ":k :kill :killswitch \t Panic button! Destroy and cleanup constellation.")
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
+		fmt.Fprintln(w, ":p :proxy \t Creates a SOCKS5 server tunnel.")
+		fmt.Fprintln(w, ":pf :portforward \t Creates a port-forwarding tunnel.")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
 		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
 		fmt.Fprintln(w, ":t :terminate \t Terminates an agent, connection, or command.")
@@ -2149,6 +2151,7 @@ func TerminalProcessMessageFileServerInitiateTransfer(msg *star.Message) {
 		src, err := FileServerTrackerGetFilename(resMsg.FileConnID)
 		if err == nil {
 			go func() {
+				printInfo(fmt.Sprintf("Request to download [ %s ] from %s has been initiated.", src, FriendlyAgentName(msg.Source, star.StreamID{})))
 				// Open the file
 				f, err := os.Open(src)
 				if err != nil {
@@ -2169,6 +2172,8 @@ func TerminalProcessMessageFileServerInitiateTransfer(msg *star.Message) {
 						break
 					}
 				}
+
+				printInfo(fmt.Sprintf("Request to download [ %s ] from %s has completed.", src, FriendlyAgentName(msg.Source, star.StreamID{})))
 
 				meta.Close()
 			}()
@@ -2372,6 +2377,7 @@ func RecordLog(timestamp time.Time, node star.NodeID, context string, subcontext
 		}
 
 		// If we've gotten here, log away!
+		print(content)
 		logCSV.Write([]string{timestamp.Format(terminalSettings["display.timestamp"].Data.(string)), node.String(), context, subcontext, content})
 		logCSV.Flush()
 	}
