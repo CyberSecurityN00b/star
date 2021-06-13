@@ -1203,6 +1203,7 @@ func terminalCommandFileServerConnect(node star.NodeID, address string) {
 		printError(fmt.Sprintf("Cannot create shell listeners on terminal nodes!"))
 		return
 	}
+}
 
 func terminalCommandClear() (err error) {
 	// Per https://stackoverflow.com/a/22892171
