@@ -52,8 +52,9 @@ S.T.A.R. Commands:
 | :?<br/>:help |  Displays generic or cmd specific help. |
 | :: | Passes on text to the focused agent. Only really useful when passing text that starts with a ':'. |
 | :b<br/>:bind | Creates a S.T.A.R. node listener and binds it to a port. |
-| :clear | Clears the terminal screen, cause apparently some people are into that. |
 | :c<br/>:connect | Connects to a S.T.A.R. node listener. |
+| :clear | Clears the terminal screen, cause apparently some people are into that. |
+| :chat | Communicate with other security researchers in the constellation. |
 | :d<br/>:down<br/>:download | Downloads a file from the agent to the terminal. |
 | :h<br/>:history | Displays the command/chat history. |
 | :i<br/>:info<br/> | Shows information for a specific agent. |

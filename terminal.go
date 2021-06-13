@@ -606,6 +606,15 @@ func terminalCommandHelp(topic string) {
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:c` to connect to a TCP TLS listener of another STAR node. <addr> uses the Golang network address format.")
+	case ":chat":
+		fmt.Println("--> COMMAND HELP FOR: :chat")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:chat <message>                          -  Sends a message.")
+		fmt.Println("\t:chat Check out what I did on agent002!  -  Sends a message.")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\tCommunicate with other security researchers in the constellation. Note that agent/term identifiers, such as agent002, are automatically converted to their unique identifier when sent, and then converted back into the receiving terminal's identifiers.")
 	case ":clear":
 		fmt.Println("--> COMMAND HELP FOR: :clear")
 		fmt.Println()
