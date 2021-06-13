@@ -1,6 +1,6 @@
 <p align="center"><img src="./_imgs/startarot.jpg" alt="S.T.A.R. Tarot Card" width="300"/><br/></p>
 
-# **S**imple **T**actical **A**gent **R**elay (**STAR**)
+# **S**imple **T**actical **A**gent **R**elay (**S.T.A.R.**)
 
 <p align="center"><img src="./_imgs/star_title.png" alt="S.T.A.R. Title Screen"/></p>
 

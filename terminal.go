@@ -28,6 +28,8 @@ var activeStream star.StreamID
 var tickerSynchronization *time.Ticker
 
 func main() {
+	defer CloseRecordLog()
+
 	showWelcomeText()
 	initTerminal()
 	star.ParameterHandling()
@@ -81,7 +83,7 @@ func initTerminal() {
 	terminalSettings["history.tracklength"] = terminalSetting{int64(100), "The number of commands to track in the history."}
 	terminalSettings["history.displaylength"] = terminalSetting{int64(10), "The number of commands to show when displaying history (doesn't include `:h all`)."}
 	terminalSettings["display.ansicolor"] = terminalSetting{true, "Use ANSI color codes in STAR output."}
-	terminalSettings["display.timestamp"] = terminalSetting{"2006.01.02-15.04.05", "GoLang timestamp format for logs/notices."}
+	terminalSettings["display.timestamp"] = terminalSetting{"2006.01.02-15:04:05", "GoLang timestamp format for logs/notices."}
 	terminalSettings["sync.minutes"] = terminalSetting{int64(5), "Send a Synchronization Request to all agents every N minutes. (Changes take effect at the next ticker synchronization; values less than 1 are ignored.)"}
 	terminalSettings["sync.mute"] = terminalSetting{true, "Mutes Synchronization Responses from agents. (Not applicable to errors.)"}
 	terminalSettings["info.showenv"] = terminalSetting{false, "Shows environment variables in agent information."}
@@ -89,8 +91,16 @@ func initTerminal() {
 	terminalSettings["info.showinterfaces"] = terminalSetting{true, "Shows network interfaces in agent information."}
 	terminalSettings["chat.nickname"] = terminalSetting{fmt.Sprintf("researcher_%s", star.RandString("abcdefghijklmnopqrstuvwxyz0123456789", 8)), "Nickname to use in S.T.A.R. chat messages."}
 	terminalSettings["chat.tracklength"] = terminalSetting{int64(100), "The number of chat messages to track in the history."}
+	terminalSettings["log.enabled"] = terminalSetting{true, "Whether or not logging is actually enabled."}
+	terminalSettings["log.chat"] = terminalSetting{true, "Determines if chat messages are logged."}
+	terminalSettings["log.commands"] = terminalSetting{true, "Determines if commands are logged."}
+	terminalSettings["log.errors"] = terminalSetting{true, "Determines if agent errors are logged."}
+	terminalSettings["log.notices"] = terminalSetting{true, "Determines if agent notices are logged."}
+	terminalSettings["log.output"] = terminalSetting{true, "Determines if terminal output is logged."}
+	terminalSettings["log.sync"] = terminalSetting{true, "Determines if synchronization activity is logged."}
 
 	// Setup history
+	SetupRecordLog()
 	historyItems = make(map[uint]historyItem)
 	historyItemsMutex = &sync.Mutex{}
 
@@ -520,23 +530,33 @@ func ANSIColorize(text string, color ANSIColor) string {
 }
 
 func printChat(text string) {
-	fmt.Println(ANSIColorize(time.Now().Format(terminalSettings["display.timestamp"].Data.(string)), ANSIColor_Time), ANSIColorize("[ STAR | chat ]> "+text, ANSIColor_Chat))
+	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
+	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | chat ]> "+text, ANSIColor_Chat))
+	// Chat history is already recorded to file elsewhere
 }
 
 func printError(text string) {
-	fmt.Println(ANSIColorize(time.Now().Format(terminalSettings["display.timestamp"].Data.(string)), ANSIColor_Time), ANSIColorize("[ STAR | err! ]> "+text, ANSIColor_Error))
+	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
+	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | err! ]> "+text, ANSIColor_Error))
+	RecordLog(time.Now(), star.ThisNode.ID, "output", "error", text)
 }
 
 func printInfo(text string) {
-	fmt.Println(ANSIColorize(time.Now().Format(terminalSettings["display.timestamp"].Data.(string)), ANSIColor_Time), ANSIColorize("[ STAR | info ]> "+text, ANSIColor_Info))
+	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
+	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | info ]> "+text, ANSIColor_Info))
+	RecordLog(time.Now(), star.ThisNode.ID, "output", "info", text)
 }
 
 func printDebug(text string) {
-	fmt.Println(ANSIColorize(time.Now().Format(terminalSettings["display.timestamp"].Data.(string)), ANSIColor_Time), ANSIColorize("[ STAR | dbg! ]> "+text, ANSIColor_Debug))
+	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
+	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | dbg! ]> "+text, ANSIColor_Debug))
+	RecordLog(time.Now(), star.ThisNode.ID, "output", "debug", text)
 }
 
 func printNotice(text string) {
-	fmt.Println(ANSIColorize(time.Now().Format(terminalSettings["display.timestamp"].Data.(string)), ANSIColor_Time), ANSIColorize("[ STAR | !!!! ]> "+text, ANSIColor_Notice))
+	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
+	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | !!!! ]> "+text, ANSIColor_Notice))
+	RecordLog(time.Now(), star.ThisNode.ID, "output", "notice", text)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -727,50 +747,52 @@ func terminalCommandHelp(topic string) {
 	case ":lmkdir":
 		fmt.Println("--> COMMAND HELP FOR: :lmkdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println(":lmkdir  -  With no arguments, same as running `:ltmpdir`.")
+		fmt.Println("\t:lmkdir             -  With no arguments, same as running `:ltmpdir`.")
+		fmt.Println("\t:lmkdir <path>      -  Creates a local directory as specified by <path> and makes it the working directory.")
+		fmt.Println("\t:lmkdir /a/new/dir  -  Creates '/a/new/dir' locally and makes it the working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tCreates a directory on the local terminal's machine and changes the working directory to it. If any parent directories do not exist, they will be created.")
 		fmt.Println()
 	case ":lpwd":
 		fmt.Println("--> COMMAND HELP FOR: :lpwd")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:lpwd  -  Prints the terminal's current working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tDisplays the local terminal's current working directory.")
 		fmt.Println()
 	case ":ltmpdir":
 		fmt.Println("--> COMMAND HELP FOR: :ltmpdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:ltmpdir  -  Create a temporary directory and make it the working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tCreates a temporary directory on the local temrinal's machine and changes the working directory to it.")
 		fmt.Println()
 	case ":rcat":
 		fmt.Println("--> COMMAND HELP FOR: :rcat")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rcat <file>                -  Outputs the contents of the remote file on the currently focused agent.")
+		fmt.Println("\t:rcat /etc/passwd           -  Outputs the contents of `/etc/passwd` on the currently focused agent.")
+		fmt.Println("\t:rcat <agent> <file>        -  Outputs the contents of the remote file of the specified agent.")
+		fmt.Println("\t:rcat agent002 /etc/shadow  -  Outputs the contents of `/etc/shadow` on agent002.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tOutputs the contents of a remote file.")
 		fmt.Println()
 	case ":rcd":
 		fmt.Println("--> COMMAND HELP FOR: :rcd")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rcd                              -  Same as running :rpwd, show the currently focused remote agent's working directory.")
+		fmt.Println("\t:rcd <path>                       -  Changes the currently focused remote agent's working directory to <path>.")
+		fmt.Println("\t:rcd <agent> <path>               -  Changes the specified remote agent's working directory to <path>.")
+		fmt.Println("\t:rcd agent001 \"C:\\Program Files\"  -  Changes agent001's working directory to \"C:\\Program Files\".")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\t<<<>>>")
@@ -1664,7 +1686,7 @@ func terminalCommandSet(setting string, value string) (err error) {
 				printDebug("Error when attempt to change setting, unexpected setting value?")
 			}
 			terminalSettings[setting] = s
-			fmt.Fprintln(w, fmt.Sprintf("%s\t%v\t%T\t%s", setting, terminalSettings[setting].Data, terminalSettings[setting].Data, terminalSettings[setting].Description))
+			fmt.Fprintln(w, fmt.Sprintf("%s\t|\t%v\t|\t%T\t|\t%s", setting, terminalSettings[setting].Data, terminalSettings[setting].Data, terminalSettings[setting].Description))
 		} else {
 			printError(fmt.Sprintf("No such setting as %s! Run `:settings` for a full list of settings!", setting))
 		}
@@ -1892,42 +1914,71 @@ func TerminalProcessMessage(msg *star.Message) {
 
 func TerminalProcessMessageError(msg *star.Message) {
 	var errMsg star.MessageErrorResponse
+	var histContext string    // Provide context for history file
+	var histSubcontext string // Provide subcontext for history file
+
+	histContext = "error" // "Default" value
 
 	err := msg.GobDecodeMessage(&errMsg)
 	if err == nil {
 		switch errMsg.Type {
 		case star.MessageErrorResponseTypeX509KeyPair:
+			histSubcontext = "Error with creation of X509 key pair."
 			printError(fmt.Sprintf("%s has reported an error with the creation of the X509 Key pair. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeConnectionLost:
+			histContext = "notice"
+			histSubcontext = "Connection lost or dropped."
 			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeBindDropped:
+			histContext = "notice"
+			histSubcontext = "Listener lost or dropped."
 			printNotice(fmt.Sprintf("%s has reported that it has lost/dropped the listening bind on %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeGobDecodeError:
+			histSubcontext = "Gob decoding error."
 			printError(fmt.Sprintf("%s has reported an error with attempting to gob decode a message of type %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeAgentExitSignal:
+			histContext = "notice"
+			histSubcontext = "Agent signal interrupt."
 			printNotice(fmt.Sprintf("%s has reported that it was terminated with the signal interrupt %s.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 			AgentTrackerRemoveInfo(msg.Source)
 		case star.MessageErrorResponseTypeUnsupportedConnectorType:
+			histSubcontext = "Unsupported connector type."
 			printError(fmt.Sprintf("%s has reported that an unsupported connector type was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeInvalidTerminationIndex:
+			histSubcontext = "Invalid termination index."
 			printError(fmt.Sprintf("%s has reported that an invalid termination index was specified. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeCommandEnded:
+			histContext = "notice"
+			histSubcontext = "Command terminated."
 			printNotice(fmt.Sprintf("%s has reported that a command has terminated. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeShellConnectionLost:
+			histContext = "notice"
+			histSubcontext = "Shell connection dropped."
 			printNotice(fmt.Sprintf("%s has reported that a shell connection was dropped. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeFileDownloadOpenFileError:
+			histSubcontext = "Failed to open file for download."
 			printError(fmt.Sprintf("%s has reported an error when attempting to open a file for downloading to the terminal. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeFileUploadOpenFileError:
+			histSubcontext = "Failed to open/create file for upload."
 			printError(fmt.Sprintf("%s has reported an error when attempting to open/create a file for uploading from the terminal. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeFileDownloadCompleted:
+			histContext = "notice"
+			histSubcontext = "Download completed."
 			printNotice(fmt.Sprintf("%s has reported that %s has completed downloading.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeFileUploadCompleted:
+			histContext = "notice"
+			histSubcontext = "Upload completed."
 			printNotice(fmt.Sprintf("%s has reported that %s has completed uploading.", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		case star.MessageErrorResponseTypeDirectoryCreationError:
+			histSubcontext = "Failed to create directory."
 			printError(fmt.Sprintf("%s has reported an error when attempting to create a directory. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		default:
+			histSubcontext = "Unspecified error."
 			printError(fmt.Sprintf("%s has reported: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		}
+
+		// Record to file
+		RecordLog(time.Now(), msg.Source, histContext, histSubcontext, errMsg.Context)
 	}
 }
 
@@ -1940,6 +1991,8 @@ func TerminalProcessSyncRequest(msg *star.Message) {
 		syncMsg.Destination = msg.Source
 		syncMsg.Send(star.ConnectID{})
 	}
+
+	RecordLog(time.Now(), msg.Source, "sync", "request", "")
 }
 
 func TerminalProcessSyncResponse(msg *star.Message) {
@@ -1953,6 +2006,8 @@ func TerminalProcessSyncResponse(msg *star.Message) {
 			printInfo(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg.Source, star.StreamID{})))
 		}
 	}
+
+	RecordLog(time.Now(), msg.Source, "sync", "response", "")
 }
 
 func TerminalProcessMessageNewBind(msg *star.Message) {
@@ -1962,6 +2017,8 @@ func TerminalProcessMessageNewBind(msg *star.Message) {
 	if err == nil {
 		printInfo(fmt.Sprintf("%s has reported a new bind/listener on %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
 	}
+
+	RecordLog(time.Now(), msg.Source, "constellation", "bind", resMsg.Address)
 
 	// Resynchronize
 	TerminalSynchronize(false)
@@ -1974,6 +2031,8 @@ func TerminalProcessMessageNewConnection(msg *star.Message) {
 	if err == nil {
 		printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
 	}
+
+	RecordLog(time.Now(), msg.Source, "constellation", "conn", resMsg.Address)
 
 	// Resynchronize
 	TerminalSynchronize(false)
@@ -1995,6 +2054,8 @@ func TerminalProcessMessageRemoteCDResponse(msg *star.Message) {
 	if err == nil {
 		printInfo(fmt.Sprintf("%s reports that it has changed its working directory from [%s] to [%s], per %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.OldDirectory, resMsg.NewDirectory, FriendlyAgentName(resMsg.Requester, star.StreamID{})))
 	}
+
+	RecordLog(time.Now(), msg.Source, "remote cmd", "cd", fmt.Sprintf("From [ %s ] to [ %s ].", resMsg.OldDirectory, resMsg.NewDirectory))
 }
 
 func TerminalProcessMessageRemoteLSResponse(msg *star.Message) {
@@ -2023,6 +2084,8 @@ func TerminalProcessMessageRemoteLSResponse(msg *star.Message) {
 	} else {
 		fmt.Printf("%v+", err)
 	}
+
+	RecordLog(time.Now(), msg.Source, "remote cmd", "ls", resMsg.Directory)
 }
 
 func TerminalProcessMessageRemoteMkDirResponse(msg *star.Message) {
@@ -2032,6 +2095,8 @@ func TerminalProcessMessageRemoteMkDirResponse(msg *star.Message) {
 	if err == nil {
 		printInfo(fmt.Sprintf("%s reports that its PWD has been changed to a newly created directory: [ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
 	}
+
+	RecordLog(time.Now(), msg.Source, "remote cmd", "mkdir", resMsg.Directory)
 }
 
 func TerminalProcessMessageRemotePWDResponse(msg *star.Message) {
@@ -2041,6 +2106,8 @@ func TerminalProcessMessageRemotePWDResponse(msg *star.Message) {
 	if err == nil {
 		printInfo(fmt.Sprintf("%s reports that its PWD=[ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
 	}
+
+	RecordLog(time.Now(), msg.Source, "remote cmd", "pwd", resMsg.Directory)
 }
 
 func TerminalProcessMessageRemoteTmpDirResponse(msg *star.Message) {
@@ -2050,6 +2117,8 @@ func TerminalProcessMessageRemoteTmpDirResponse(msg *star.Message) {
 	if err == nil {
 		printInfo(fmt.Sprintf("%s reports that its PWD has been changed to a new temporary directory: [ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
 	}
+
+	RecordLog(time.Now(), msg.Source, "remote cmd", "tmpdir", resMsg.Directory)
 }
 
 func TerminalProcessMessageChat(msg *star.Message) {
@@ -2068,7 +2137,7 @@ func TerminalProcessMessageChat(msg *star.Message) {
 		// Display
 		printChat(fmt.Sprintf("%s@%s says: %s", resMsg.Nickname, FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Content))
 
-		// Add to history
+		// Add to history (takes care of record history as well)
 		HistoryChatPush(historyChatItem{Timestamp: time.Now(), Node: msg.Source, Nickname: resMsg.Nickname, Content: resMsg.Content})
 	}
 }
@@ -2104,6 +2173,8 @@ func TerminalProcessMessageFileServerInitiateTransfer(msg *star.Message) {
 				meta.Close()
 			}()
 		}
+
+		RecordLog(time.Now(), msg.Source, "fileserver", "transfer initated", src)
 	}
 
 	return
@@ -2191,6 +2262,9 @@ func HistoryPush(item historyItem) {
 			}
 		}
 	}
+
+	// Record to file
+	RecordLog(item.Timestamp, item.Node, "commands", FriendlyAgentName(item.Node, item.Stream), item.String)
 }
 
 func HistoryPop() {
@@ -2235,6 +2309,9 @@ func HistoryChatPush(item historyChatItem) {
 			}
 		}
 	}
+
+	// Record to file
+	RecordLog(item.Timestamp, item.Node, "chat", item.Nickname, item.Content)
 }
 
 func HistoryChatPop() {
@@ -2243,6 +2320,67 @@ func HistoryChatPop() {
 
 	delete(historyChatItems, historyChatIndex)
 	historyChatIndex--
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/**************************** Save History To File ***************************/
+///////////////////////////////////////////////////////////////////////////////
+var logFile *os.File
+var logCSV *csv.Writer
+
+func SetupRecordLog() {
+	var err error
+	logFile, err = os.OpenFile(fmt.Sprintf("%s.log.csv", star.ThisNode.ID), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0700)
+	if err != nil {
+		// Fail quietly
+		return
+	}
+
+	logCSV = csv.NewWriter(logFile)
+	logCSV.Write([]string{"Timestamp", "Node", "Context", "SubContext", "Content"})
+	logCSV.Flush()
+}
+
+func RecordLog(timestamp time.Time, node star.NodeID, context string, subcontext string, content string) {
+	if logFile != nil && logCSV != nil && terminalSettings["log.enabled"].Data.(bool) {
+		// Filter based on settings
+		switch context {
+		case "chat":
+			if !terminalSettings["log.chat"].Data.(bool) {
+				return
+			}
+		case "commands":
+			if !terminalSettings["log.commands"].Data.(bool) {
+				return
+			}
+		case "error":
+			if !terminalSettings["log.errors"].Data.(bool) {
+				return
+			}
+		case "notice":
+			if !terminalSettings["log.notices"].Data.(bool) {
+				return
+			}
+		case "output":
+			if !terminalSettings["log.output"].Data.(bool) {
+				return
+			}
+		case "sync":
+			if !terminalSettings["log.sync"].Data.(bool) {
+				return
+			}
+		}
+
+		// If we've gotten here, log away!
+		logCSV.Write([]string{timestamp.Format(terminalSettings["display.timestamp"].Data.(string)), node.String(), context, subcontext, content})
+		logCSV.Flush()
+	}
+}
+
+func CloseRecordLog() {
+	if logFile != nil {
+		logFile.Close()
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
