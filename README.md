@@ -105,6 +105,21 @@ Build-In Remote Commands:
 | :rpwd | Prints the remote agents's working directory. |
 | :rtmpdir | Creates a temporary directory remotely and changes the agents's working directory to it. |
 
+## Special Thanks
+
+### Contributors
+
+ - [Shimstache](https://github.com/Shimstache) - Brainstorming, discussing, testing, and providing feedback.
+ - [TheeNawMan](https://github.com/TheeNawMan) - Brainstorming and discussing.
+
+### GitHub Sponsors - VIP
+
+ - None as of yet!
+
+### GitHub Sponsors
+
+ - None as of yet!
+
 ## Misc.
 
 ### Artwork
