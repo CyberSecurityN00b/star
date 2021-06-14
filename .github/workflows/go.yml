@@ -18,5 +18,11 @@ jobs:
       with:
         go-version: 1.16
 
-    - name: Build
-      run: touch connection.crt && touch connection.key && go build -v ./agent.go && go build -v ./terminal.go
+    - name: Create "fake" key/pair
+      run: touch connection.crt && touch connection.key
+        
+    - name: Build Agent
+      run: go build -v ./agent.go
+        
+    - name: Build Terminal
+      run: go build -v ./terminal.go
