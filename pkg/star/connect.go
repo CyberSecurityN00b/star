@@ -15,6 +15,7 @@ type Connection interface {
 	Read(data []byte) (n int, err error)
 	Write(data []byte) (n int, err error)
 	Close()
+	DataSize() (s int)
 }
 
 // The Connector interface provides the standard functions for creating STAR node connections.
@@ -67,7 +68,8 @@ type ConnectorType byte
 
 const (
 	// ConnectorType_TCPTLS is used by the terminal to tell an agent that a TCP
-	// connector should be used when requesting a bind or a connect.
+	// connector should be used when requesting a bind or a connect. This is the
+	// required means of connections between S.T.A.R. nodes.
 	ConnectorType_TCPTLS ConnectorType = iota + 1
 
 	ConnectorType_ShellTCP
@@ -79,6 +81,12 @@ const (
 	ConnectorType_FileServerTCPTLS
 	ConnectorType_FileServerUDP
 	ConnectorType_FileServerUDPTLS
+
+	ConnectorType_PortForwardTCP
+	ConnectorType_PortForwardUDP
+
+	ConnectorType_Socks5ProxyTCP
+	ConnectorType_Socks5ProxyUDP
 )
 
 ///////////////////////////////////////////////////////////////////////////////

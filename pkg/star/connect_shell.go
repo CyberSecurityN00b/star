@@ -65,6 +65,7 @@ func (connector *Shell_Connector) Connect() (err error) {
 	conn.Destination = connector.Requester
 	conn.ID = RegisterConnection(conn)
 	go conn.Handle()
+
 	return
 }
 
@@ -160,7 +161,7 @@ func (c Shell_Connection) Handle() {
 	c.StreamID = meta.ID
 
 	for {
-		buff := make([]byte, RandDataSize())
+		buff := make([]byte, c.DataSize())
 		n, err := c.Read(buff)
 		if err == nil && n > 0 {
 			meta.Write(buff[:n])
@@ -210,4 +211,8 @@ func (c Shell_Connection) Close() {
 	}
 	UnregisterConnection(c.ID)
 	ThisNodeInfo.RemoveConnector(c.ID)
+}
+
+func (c Shell_Connection) DataSize() (s int) {
+	return 65535
 }

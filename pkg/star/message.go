@@ -160,6 +160,14 @@ const (
 
 	// MessageTypeChat identifies the message as being related to chatting
 	MessageTypeChat
+
+	// MessageTypePortForwardRequest identifies the message as being related to the
+	// setting up of port forwarding
+	MessageTypePortForwardRequest
+
+	// MessageTypeSocks5ProxySourceRequest identifies the message as being related to the
+	// setting up of a SOCKS5 proxy
+	MessageTypeSocks5ProxyRequest
 )
 
 func (msg *Message) Process() {
@@ -196,6 +204,15 @@ const (
 	MessageErrorResponseTypeFileUploadCompleted
 	MessageErrorResponseTypeDirectoryCreationError
 	MessageErrorResponseTypeFileServerConnectionLost
+	MessageErrorResponseTypeFileServerConnectionNotFound
+	MessageErrorResponseTypePortForwardingConnectionNotFound
+	MessageErrorResponseTypeSocks5ProxyConnectionNotFound
+	MessageErrorResponseTypePortForwardingSourceAddressUnavailable
+	MessageErrorResponseTypePortForwardingDestinationAddressUnavailable
+	MessageErrorResponseTypeSocks5ProxySourceAddressUnavailable
+	MessageErrorResponseTypeSocks5ProxyDestinationAddressUnavailable
+	MessageErrorResponseTypePortForwardingConnectionLost
+	MessageErrorResponseTypeSocks5ProxyConnectionLost
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -625,6 +642,45 @@ func NewMessageChatRequest(Nickname string, Content string) (msg *Message) {
 	msg = NewMessage()
 	msg.Type = MessageTypeChat
 	msg.Data = GobEncode(MessageChatRequest{Nickname: Nickname, Content: Content})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/***************************** MessagePortForward ****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessagePortForwardRequest struct {
+	DstNode    NodeID
+	SrcType    ConnectorType
+	DstType    ConnectorType
+	SrcAddress string
+	DstAddress string
+}
+
+func NewMessagePortForwardRequest(SrcAddress string, SrcType ConnectorType, DstNode NodeID, DstAddress string, DstType ConnectorType) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypePortForwardRequest
+	msg.Data = GobEncode(MessagePortForwardRequest{DstNode: DstNode, SrcType: SrcType, DstType: DstType, SrcAddress: SrcAddress, DstAddress: DstAddress})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
+/***************************** MessageSocks5Proxy ****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessageSocks5ProxyRequest struct {
+	DstNode    NodeID
+	SrcAddress string
+	SrcType    ConnectorType
+	DstAddress string
+}
+
+func NewMessageSocks5ProxyRequest(SrcAddress string, SrcType ConnectorType, DstNode NodeID) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypeSocks5ProxyRequest
+	msg.Data = GobEncode(MessageSocks5ProxyRequest{DstNode: DstNode, SrcAddress: SrcAddress, SrcType: SrcType})
 
 	return
 }

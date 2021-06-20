@@ -172,3 +172,7 @@ func (c TCP_Connection) Close() {
 	UnregisterConnection(c.ID)
 	ThisNodeInfo.RemoveConnector(c.ID)
 }
+
+func (c TCP_Connection) DataSize() (s int) {
+	return 65535
+}

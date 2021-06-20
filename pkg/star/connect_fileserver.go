@@ -153,7 +153,7 @@ func (c FileServer_Connection) Handle() {
 
 	// Perform a read so this works with tools like wget, and not just netcat
 	// (Do this after the transfer request so netcat still works)
-	buff := make([]byte, RandDataSize())
+	buff := make([]byte, c.DataSize())
 	c.Read(buff)
 }
 
@@ -192,4 +192,8 @@ func (c FileServer_Connection) Close() {
 	}
 	UnregisterConnection(c.ID)
 	ThisNodeInfo.RemoveConnector(c.ID)
+}
+
+func (c FileServer_Connection) DataSize() (s int) {
+	return 65535
 }

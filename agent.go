@@ -101,6 +101,10 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessFileServerBind(msg)
 	case star.MessageTypeFileServerConnect:
 		AgentProcessFileServerConnect(msg)
+	case star.MessageTypeSocks5ProxyRequest:
+		star.ProcessMessageSocks5Proxy(msg)
+	case star.MessageTypePortForwardRequest:
+		star.ProcessMessagePortForward(msg)
 	}
 }
 

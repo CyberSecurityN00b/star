@@ -75,7 +75,7 @@ S.T.A.R. Commands:
 | :u<br/>:up<br/>:upload | Uploads a file from the terminal to the agent. |
 | :q<br/>:quit | Quits the current terminal. |
 
-Build-In Local Commands:
+Built-In Local Commands:
 | Commands | Description |
 | --- | --- |
 | :lcat | Outputs the contents of a local file. |
@@ -85,7 +85,7 @@ Build-In Local Commands:
 | :lpwd | Prints the local terminal's working directory. |
 | :ltmpdir | Creates a temporary directory locally and changes the terminal's working directory to it. |
 
-Build-In Remote Commands:
+Built-In Remote Commands:
 | Commands | Description |
 | --- | --- |
 | :rcat | Outputs the contents of a remote file. |
