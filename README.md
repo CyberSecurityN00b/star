@@ -6,7 +6,6 @@
 ![GitHub](https://img.shields.io/github/license/CyberSecurityN00b/star?style=plastic)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/CyberSecurityN00b/star?style=plastic)
 ![GitHub all releases](https://img.shields.io/github/downloads/CyberSecurityN00b/star/total?style=plastic)
-![Lines of code](https://img.shields.io/tokei/lines/github/CyberSecurityN00b/star?style=plastic)
 ![GitHub top language](https://img.shields.io/github/languages/top/CyberSecurityN00b/star?style=plastic)
 ![GitHub Sponsors](https://img.shields.io/github/sponsors/CyberSecurityN00b?style=plastic)
 
