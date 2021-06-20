@@ -55,7 +55,7 @@ func NewStreamMeta(t StreamType, dstID NodeID, context string, writer func(data 
 
 	NewActiveStream(meta)
 
-	go meta.SendMessageCreate()
+	meta.SendMessageCreate()
 
 	return
 }
