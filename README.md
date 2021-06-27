@@ -131,4 +131,4 @@ This tool is intended for ethical hackers and security researchers. The author i
 
 ### Future Development
 
-Once all currently planned features are implemented, development of this tool by the author will be limited to maintenance, bug fixes, and security issues. New features are not at all likely to be implemented; feature requests in the nature of exploitation, enumeration, etc. will not be entertained.
+Once all currently planned features are implemented, development of this tool by the author will be limited to maintenance, bug fixes, and security issues. New features are not at all likely to be implemented; feature requests in the nature of exploitation, enumeration, etc. will not be entertained. The exception to this _may_ be SOCKS5 proxy implementation, but man am I tired of that right now.
