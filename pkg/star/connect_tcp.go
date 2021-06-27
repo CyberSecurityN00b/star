@@ -3,7 +3,6 @@ package star
 import (
 	"crypto/tls"
 	"encoding/gob"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -39,7 +38,7 @@ func (connector *TCP_Connector) Connect() (err error) {
 
 	c, err := tls.Dial("tcp", connector.Address, ConnectionConfig)
 	if err != nil {
-		fmt.Println(err.Error())
+		ThisNode.Printer(ThisNode.ID, StreamID{}, err.Error())
 		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return
 	}
@@ -79,7 +78,6 @@ func (connector *TCP_Connector) Listen() error {
 		conn = new(TCP_Connection)
 		c, err := l.Accept()
 		if err != nil {
-			fmt.Println(err.Error())
 			NewMessageError(0, err.Error()).Send(ConnectID{})
 			return err
 		}
@@ -93,7 +91,9 @@ func (connector *TCP_Connector) Listen() error {
 }
 
 func (connector *TCP_Connector) Close() {
-	(*connector.Listener).Close()
+	if (*connector.Listener) != nil {
+		(*connector.Listener).Close()
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -171,4 +171,8 @@ func (c TCP_Connection) Close() {
 	}
 	UnregisterConnection(c.ID)
 	ThisNodeInfo.RemoveConnector(c.ID)
+}
+
+func (c TCP_Connection) DataSize() (s int) {
+	return 65535
 }

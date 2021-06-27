@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,22 +36,26 @@ type StreamTakeover struct {
 	ID StreamID
 }
 
-var ActiveStreams map[StreamID]*StreamMeta
-var ActiveStreamsMutex *sync.Mutex
+var activeStreams map[StreamID]*StreamMeta
+var activeStreamsMutex *sync.Mutex
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 // NewStreamMeta is called by the terminal to setup a stream meta
-func NewStreamMeta(t StreamType, dstID NodeID, context string) (meta *StreamMeta) {
+func NewStreamMeta(t StreamType, dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
 	meta = &StreamMeta{}
 	NewUID([]byte(meta.ID[:]))
 	meta.Type = t
 	meta.remoteNodeID = dstID
 	meta.Context = context
 	meta.writelock = &sync.Mutex{}
+	meta.funcwriter = writer
+	meta.funccloser = closer
 
 	NewActiveStream(meta)
+
+	meta.SendMessageCreate()
 
 	return
 }
@@ -73,42 +78,37 @@ func NewStreamMetaMirror(metaOrig *StreamMeta, dstID NodeID) (metaNew *StreamMet
 }
 
 func NewStreamMetaCommand(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeCommand, dstID, context)
-	meta.funcwriter = writer
-	meta.funccloser = closer
-	go meta.SendMessageCreate()
+	meta = NewStreamMeta(StreamTypeCommand, dstID, context, writer, closer)
 	return
 }
 
 func NewStreamMetaShell(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeShell, dstID, context)
-	meta.funcwriter = writer
-	meta.funccloser = closer
-	go meta.SendMessageCreate()
+	meta = NewStreamMeta(StreamTypeShell, dstID, context, writer, closer)
 	return
 }
 
 func NewStreamMetaDownload(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeFileDownload, dstID, context)
-	meta.funcwriter = writer
-	meta.funccloser = closer
-	go meta.SendMessageCreate()
+	meta = NewStreamMeta(StreamTypeFileDownload, dstID, context, writer, closer)
 	return
 }
 
 func NewStreamMetaUpload(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeFileUpload, dstID, context)
-	meta.funcwriter = writer
-	meta.funccloser = closer
-	go meta.SendMessageCreate()
+	meta = NewStreamMeta(StreamTypeFileUpload, dstID, context, writer, closer)
 	return
 }
 
 func NewStreamMetaFileServer(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeFileServer, dstID, context)
-	meta.funcwriter = writer
-	meta.funccloser = closer
-	go meta.SendMessageCreate()
+	meta = NewStreamMeta(StreamTypeFileServer, dstID, context, writer, closer)
+	return
+}
+
+func NewStreamMetaPortForwardingTCP(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypePortForwardTCP, dstID, context, writer, closer)
+	return
+}
+
+func NewStreamMetaPortForwardingUDP(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
+	meta = NewStreamMeta(StreamTypePortForwardUDP, dstID, context, writer, closer)
 	return
 }
 
@@ -161,6 +161,10 @@ func (meta *StreamMeta) SendMessageWrite(data []byte) {
 }
 
 func (meta *StreamMeta) Close() {
+	if meta == nil {
+		// o_o
+		return
+	}
 
 	if meta.functerminate != nil {
 		meta.functerminate()
@@ -180,27 +184,27 @@ func (meta *StreamMeta) Close() {
 ///////////////////////////////////////////////////////////////////////////////
 
 func NewActiveStream(tracker *StreamMeta) {
-	ActiveStreamsMutex.Lock()
-	defer ActiveStreamsMutex.Unlock()
+	activeStreamsMutex.Lock()
+	defer activeStreamsMutex.Unlock()
 
 	id := tracker.ID
-	ActiveStreams[id] = tracker
+	activeStreams[id] = tracker
 	ThisNodeInfo.AddStream(tracker.ID, tracker.Type, tracker.Context, tracker.remoteNodeID)
 }
 
 func GetActiveStream(id StreamID) (tracker *StreamMeta, ok bool) {
-	ActiveStreamsMutex.Lock()
-	defer ActiveStreamsMutex.Unlock()
+	activeStreamsMutex.Lock()
+	defer activeStreamsMutex.Unlock()
 
-	tracker, ok = ActiveStreams[id]
+	tracker, ok = activeStreams[id]
 	return
 }
 
 func RemoveActiveStream(id StreamID) {
-	ActiveStreamsMutex.Lock()
-	defer ActiveStreamsMutex.Unlock()
+	activeStreamsMutex.Lock()
+	defer activeStreamsMutex.Unlock()
 
-	delete(ActiveStreams, id)
+	delete(activeStreams, id)
 	ThisNodeInfo.RemoveStream(id)
 }
 
@@ -230,6 +234,8 @@ const (
 	StreamTypeFileServer
 	StreamTypeFileUpload
 	StreamTypeShell
+	StreamTypePortForwardTCP
+	StreamTypePortForwardUDP
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -314,7 +320,7 @@ func HandleStreamCreate(msg *Message) {
 		case StreamTypeShell:
 			// Terminal will handle this one
 			meta.funcwriter = func(data []byte) {
-				fmt.Printf("%s", data)
+				ThisNode.Printer(meta.remoteNodeID, meta.ID, fmt.Sprintf("%s", data))
 			}
 			meta.functerminate = func() {}
 		case StreamTypeFileDownload:
@@ -337,8 +343,8 @@ func HandleStreamCreate(msg *Message) {
 
 			// Read from the file
 			go func() {
+				buff := make([]byte, 65535)
 				for {
-					buff := make([]byte, RandDataSize())
 					n, err := r.Read(buff)
 					if err == nil && n > 0 {
 						meta.Write(buff[:n])
@@ -374,7 +380,7 @@ func HandleStreamCreate(msg *Message) {
 		case StreamTypeFileServer:
 			c, ok := GetConnectionByString(meta.Context)
 			if !ok {
-				print("Error!")
+				NewMessageError(MessageErrorResponseTypeFileServerConnectionNotFound, meta.Context)
 				break
 			}
 
@@ -384,6 +390,72 @@ func HandleStreamCreate(msg *Message) {
 			meta.functerminate = func() {
 				c.Close()
 			}
+		case StreamTypePortForwardTCP:
+			var c net.Conn
+			c, err = net.Dial("tcp", meta.Context)
+
+			if err != nil {
+				NewMessageError(0, err.Error()).Send(ConnectID{})
+				return
+			}
+
+			meta.funcwriter = func(data []byte) {
+				c.Write(data)
+			}
+			meta.functerminate = func() {
+				c.Close()
+			}
+
+			go func() {
+				buff := make([]byte, 65535)
+				for {
+					n, err := c.Read(buff)
+					if err == nil && n > 0 {
+						meta.Write(buff[:n])
+					} else {
+						if c != nil {
+							c.Close()
+						}
+						if meta != nil {
+							meta.Close()
+						}
+						return
+					}
+				}
+			}()
+		case StreamTypePortForwardUDP:
+			var c net.Conn
+			c, err = net.Dial("udp", meta.Context)
+
+			if err != nil {
+				NewMessageError(0, err.Error()).Send(ConnectID{})
+				return
+			}
+
+			meta.funcwriter = func(data []byte) {
+				c.Write(data)
+			}
+			meta.functerminate = func() {
+				c.Close()
+			}
+
+			go func() {
+				buff := make([]byte, 65535)
+				for {
+					n, err := c.Read(buff)
+					if err == nil && n > 0 {
+						meta.Write(buff[:n])
+					} else {
+						if c != nil {
+							c.Close()
+						}
+						if meta != nil {
+							meta.Close()
+						}
+						return
+					}
+				}
+			}()
 		default:
 			meta.Close()
 		}
@@ -399,14 +471,13 @@ func HandleStreamFlow(msg *Message) {
 	err := msg.GobDecodeMessage(&streamMsg)
 	if err == nil {
 		stream, ok := GetActiveStream(streamMsg.ID)
-		if ok {
-			if stream.funcwriter != nil {
-				stream.funcwriter(streamMsg.Data)
-			}
-			stream.SendMessageAcknowledge()
-		} else {
-			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamFlow")
+		if !ok {
+			return
 		}
+		if stream.funcwriter != nil {
+			stream.funcwriter(streamMsg.Data)
+		}
+		stream.SendMessageAcknowledge()
 	}
 }
 
@@ -414,29 +485,29 @@ func HandleStreamClose(msg *Message) {
 	var streamMsg StreamMeta
 
 	err := msg.GobDecodeMessage(&streamMsg)
-	if err == nil {
-		stream, ok := GetActiveStream(streamMsg.ID)
-		if ok {
-			if stream.functerminate != nil {
-				stream.functerminate()
-			}
-			if stream.funccloser != nil {
-				stream.funccloser(stream.ID)
-			}
-			RemoveActiveStream(stream.ID)
-		} else {
-			fmt.Println("DEBUG: Error with GetActiveStream in HandleStreamClose")
-		}
+	if err != nil {
+		return
 	}
+
+	stream, ok := GetActiveStream(streamMsg.ID)
+	if !ok {
+		return
+	}
+	if stream.functerminate != nil {
+		stream.functerminate()
+	}
+	if stream.funccloser != nil {
+		stream.funccloser(stream.ID)
+	}
+	RemoveActiveStream(stream.ID)
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
 
 func (stream *StreamMeta) Write(p []byte) (n int, err error) {
-	streamBufferMax := RandDataSize()
-	for i := 0; i < len(p); i += streamBufferMax {
-		n = i + streamBufferMax
+	for i := 0; i < len(p); i += 65535 {
+		n = i + 65535
 		if n > len(p) {
 			n = len(p)
 		}

@@ -21,6 +21,7 @@ The inspiration for the tool is due to the author working on HackTheBox's Dante 
 
 1. _It is assumed that you already have the latest version of golang installed on your machine._
 1. Clone the repository to your local machine with `git clone https://github.com/CyberSecurityN00b/star.git`
+1. Search for `SECURITY RESEARCHER TODO` in the code for per-engagement recommendations
 1. From within the repository, run `./build-star.sh`
 1. You should now have a batch of agents (in `./bin/agents/`) and terminals (in `./bin/terminals/`); additionally, you will have a terminal compiled for your local machine at `./bin/star_terminal`.
 
@@ -76,15 +77,14 @@ S.T.A.R. Commands:
 | :j<br/>:jump | Changes focus (or "jumps to") another agent or stream. |
 | :k<br/>:kill<br/>:killswitch | Panic button! Destroy and cleans up constellation. _Note: Will not be fully implemented until development is complete._ |
 | :l<br/>:list | Lists agents, connections, and streams (commands). |
-| :pf<br/>:portforward | Port forwarding. _**Not yet implemented.**_ |
-| :p<br/>:proxy | SOCKS5 proxy. _**Not yet implemented.**_ |
+| :pf<br/>:portforward | Port forwarding. |
 | :s<br/>:set<br/>:setting<br/>:settings | View/set configuration settings. |
 | :sync | Forces constellation synchronization. |
 | :t<br/>:terminate | Terminate an agent, connection, or stream (command). |
 | :u<br/>:up<br/>:upload | Uploads a file from the terminal to the agent. |
 | :q<br/>:quit | Quits the current terminal. |
 
-Build-In Local Commands:
+Built-In Local Commands:
 | Commands | Description |
 | --- | --- |
 | :lcat | Outputs the contents of a local file. |
@@ -94,7 +94,7 @@ Build-In Local Commands:
 | :lpwd | Prints the local terminal's working directory. |
 | :ltmpdir | Creates a temporary directory locally and changes the terminal's working directory to it. |
 
-Build-In Remote Commands:
+Built-In Remote Commands:
 | Commands | Description |
 | --- | --- |
 | :rcat | Outputs the contents of a remote file. |
@@ -123,7 +123,7 @@ Build-In Remote Commands:
 
 ### Artwork
 
-TODO: Credit
+The Star Tarot artwork at the top of this page and under `./imgs` was commissioned from a provider on Fiverr who is no longer active on the service. It may be used freely in material which is promoting the S.T.A.R. project.
 
 ### Legal*ish*
 

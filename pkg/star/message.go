@@ -1,7 +1,6 @@
 package star
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"sync"
@@ -160,6 +159,10 @@ const (
 
 	// MessageTypeChat identifies the message as being related to chatting
 	MessageTypeChat
+
+	// MessageTypePortForwardRequest identifies the message as being related to the
+	// setting up of port forwarding
+	MessageTypePortForwardRequest
 )
 
 func (msg *Message) Process() {
@@ -196,6 +199,11 @@ const (
 	MessageErrorResponseTypeFileUploadCompleted
 	MessageErrorResponseTypeDirectoryCreationError
 	MessageErrorResponseTypeFileServerConnectionLost
+	MessageErrorResponseTypeFileServerConnectionNotFound
+	MessageErrorResponseTypePortForwardingConnectionNotFound
+	MessageErrorResponseTypePortForwardingSourceAddressUnavailable
+	MessageErrorResponseTypePortForwardingDestinationAddressUnavailable
+	MessageErrorResponseTypePortForwardingConnectionLost
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -524,8 +532,6 @@ func NewMessageRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (msg 
 	}
 
 	msg.Data = GobEncode(MessageRemoteLSResponse{Directory: Directory, Files: Files})
-	fmt.Printf("%v+", Directory)
-	fmt.Printf("%v+", FileInfos)
 
 	return
 }
@@ -630,6 +636,26 @@ func NewMessageChatRequest(Nickname string, Content string) (msg *Message) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+/***************************** MessagePortForward ****************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessagePortForwardRequest struct {
+	DstNode    NodeID
+	SrcType    ConnectorType
+	DstType    ConnectorType
+	SrcAddress string
+	DstAddress string
+}
+
+func NewMessagePortForwardRequest(SrcAddress string, SrcType ConnectorType, DstNode NodeID, DstAddress string, DstType ConnectorType) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypePortForwardRequest
+	msg.Data = GobEncode(MessagePortForwardRequest{DstNode: DstNode, SrcType: SrcType, DstType: DstType, SrcAddress: SrcAddress, DstAddress: DstAddress})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /************************************ Send ***********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -640,6 +666,11 @@ func (msg *Message) Send(src ConnectID) {
 	destinationTrackerMutex.Lock()
 	dst, exists := destinationTracker[msg.Destination]
 	destinationTrackerMutex.Unlock()
+
+	// Either global or self->self
+	if msg.Destination == ThisNode.ID {
+		msg.Process()
+	}
 
 	if msg.Destination.IsBroadcastNodeID() || !exists {
 		for conn := range connectionTracker {

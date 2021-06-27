@@ -57,7 +57,6 @@ func (connector *FileServer_Connector) Connect() (err error) {
 	}
 
 	if err != nil {
-		print(err.Error())
 		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return
 	}
@@ -125,7 +124,9 @@ func (connector *FileServer_Connector) Listen() (err error) {
 }
 
 func (connector *FileServer_Connector) Close() {
-	(*connector.Listener).Close()
+	if (*connector.Listener) != nil {
+		(*connector.Listener).Close()
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -153,7 +154,7 @@ func (c FileServer_Connection) Handle() {
 
 	// Perform a read so this works with tools like wget, and not just netcat
 	// (Do this after the transfer request so netcat still works)
-	buff := make([]byte, RandDataSize())
+	buff := make([]byte, c.DataSize())
 	c.Read(buff)
 }
 
@@ -192,4 +193,8 @@ func (c FileServer_Connection) Close() {
 	}
 	UnregisterConnection(c.ID)
 	ThisNodeInfo.RemoveConnector(c.ID)
+}
+
+func (c FileServer_Connection) DataSize() (s int) {
+	return 65535
 }

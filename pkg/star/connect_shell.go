@@ -65,6 +65,7 @@ func (connector *Shell_Connector) Connect() (err error) {
 	conn.Destination = connector.Requester
 	conn.ID = RegisterConnection(conn)
 	go conn.Handle()
+
 	return
 }
 
@@ -121,7 +122,9 @@ func (connector *Shell_Connector) Listen() (err error) {
 }
 
 func (connector *Shell_Connector) Close() {
-	(*connector.Listener).Close()
+	if (*connector.Listener) != nil {
+		(*connector.Listener).Close()
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -142,7 +145,10 @@ func (c Shell_Connection) Handle() {
 	defer func() {
 		recover()
 		NewMessageError(MessageErrorResponseTypeShellConnectionLost, addr).Send(ConnectID{})
-		ActiveStreams[c.StreamID].Close()
+		s, ok := GetActiveStream(c.StreamID)
+		if ok {
+			s.Close()
+		}
 		UnregisterConnection(c.ID)
 		ThisNodeInfo.RemoveConnector(c.ID)
 	}()
@@ -159,17 +165,13 @@ func (c Shell_Connection) Handle() {
 	})
 	c.StreamID = meta.ID
 
+	buff := make([]byte, c.DataSize())
 	for {
-		buff := make([]byte, RandDataSize())
 		n, err := c.Read(buff)
 		if err == nil && n > 0 {
 			meta.Write(buff[:n])
 		} else {
-			if c.TLSConn != nil {
-				c.TLSConn.Close()
-			} else {
-				c.NetConn.Close()
-			}
+			c.Close()
 			return
 		}
 	}
@@ -210,4 +212,8 @@ func (c Shell_Connection) Close() {
 	}
 	UnregisterConnection(c.ID)
 	ThisNodeInfo.RemoveConnector(c.ID)
+}
+
+func (c Shell_Connection) DataSize() (s int) {
+	return 65535
 }

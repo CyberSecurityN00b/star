@@ -61,6 +61,7 @@ func initTerminal() {
 	star.STARCoreSetup()
 	star.ThisNode = star.NewNode(star.NodeTypeTerminal)
 	star.ThisNode.MessageProcessor = TerminalProcessMessage
+	star.ThisNode.Printer = TerminalPrinter
 
 	star.ThisNodeInfo.Setup()
 
@@ -132,6 +133,8 @@ func initTerminal() {
 			}
 		}
 	}()
+
+	termPrintMutex = &sync.Mutex{}
 
 	printInfo(fmt.Sprintf("Terminal Initiated! Terminal ID is %s.", star.ThisNode.ID))
 	printInfo("Good luck and have fun!")
@@ -362,6 +365,12 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandHelp(":ltmpdir")
 		}
+	case ":pf", ":portforward":
+		if len(inputs) == 3 {
+			terminalCommandPortForward(inputs[1], inputs[2])
+		} else {
+			terminalCommandHelp(":pf")
+		}
 	case ":rcat":
 		node, argoffset, ok := remoteAgentCheck()
 		if !ok {
@@ -507,14 +516,15 @@ func handleTerminalInput(input string) {
 type ANSIColor string
 
 const (
-	ANSIColor_Chat      ANSIColor = "\033[0;35;51m%s\033[0m"
-	ANSIColor_Error     ANSIColor = "\033[0;31m%s\033[0m"
-	ANSIColor_Info      ANSIColor = "\033[0;36m%s\033[0m"
-	ANSIColor_Debug     ANSIColor = "\033[1;31m%s\033[0m"
-	ANSIColor_Time      ANSIColor = "\033[7m%s\033[0m"
-	ANSIColor_Focus     ANSIColor = "\033[7m%s\033[0m"
-	ANSIColor_Notice    ANSIColor = "\033[33m%s\033[0m"
-	ANSIColor_DeadAgent ANSIColor = "\033[101m%s\033[0m"
+	ANSIColor_Chat             ANSIColor = "\033[0;35;51m%s\033[0m"
+	ANSIColor_Error            ANSIColor = "\033[0;31m%s\033[0m"
+	ANSIColor_Info             ANSIColor = "\033[0;36m%s\033[0m"
+	ANSIColor_Debug            ANSIColor = "\033[1;31m%s\033[0m"
+	ANSIColor_Time             ANSIColor = "\033[7m%s\033[0m"
+	ANSIColor_Focus            ANSIColor = "\033[7m%s\033[0m"
+	ANSIColor_Notice           ANSIColor = "\033[33m%s\033[0m"
+	ANSIColor_DeadAgent        ANSIColor = "\033[101m%s\033[0m"
+	ANSIColor_TermPrintPreface ANSIColor = "\033[0;46m%s\033[0m"
 )
 
 func ANSIColorize(text string, color ANSIColor) string {
@@ -529,33 +539,58 @@ func ANSIColorize(text string, color ANSIColor) string {
 	}
 }
 
+var termPrintLastNode star.NodeID
+var termPrintLastStream star.StreamID
+var termPrintPreface string
+var termPrintMutex *sync.Mutex
+
+func TerminalPrinter(node star.NodeID, stream star.StreamID, a ...interface{}) {
+	termPrintMutex.Lock()
+	defer termPrintMutex.Unlock()
+
+	if !node.IsBroadcastNodeID() && !stream.IsEmptyStreamID() {
+		if termPrintLastNode != node || termPrintLastStream != stream {
+			name := FriendlyAgentName(node, stream)
+			if len(name) > 1 {
+				fmt.Println()
+				fmt.Println(ANSIColorize("OUTPUT SOURCE CHANGED TO <"+name+">", ANSIColor_TermPrintPreface))
+			}
+		}
+	}
+
+	fmt.Print(a...)
+
+	termPrintLastNode = node
+	termPrintLastStream = stream
+}
+
 func printChat(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | chat ]> "+text, ANSIColor_Chat))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | chat ]> "+text, ANSIColor_Chat), "\n")
 	// Chat history is already recorded to file elsewhere
 }
 
 func printError(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | err! ]> "+text, ANSIColor_Error))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | err! ]> "+text, ANSIColor_Error), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "error", text)
 }
 
 func printInfo(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | info ]> "+text, ANSIColor_Info))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | info ]> "+text, ANSIColor_Info), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "info", text)
 }
 
 func printDebug(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | dbg! ]> "+text, ANSIColor_Debug))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | dbg! ]> "+text, ANSIColor_Debug), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "debug", text)
 }
 
 func printNotice(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | !!!! ]> "+text, ANSIColor_Notice))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | !!!! ]> "+text, ANSIColor_Notice), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "notice", text)
 }
 
@@ -602,7 +637,7 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:b` to create a TCP TLS listener for other STAR node to connect to. <addr> uses the Golang network address format.")
 		fmt.Println()
-		fmt.Println("Note: <addr> can be in port or ip:port format. If just a format, it must be preceded by a ':', such as 'shell.tcp:4444' or ':4444'")
+		fmt.Println("Note: <addr> can be in port or ip:port format. If just port format, it must be preceded by a ':', such as 'shell.tcp:4444' or ':4444'")
 	case ":c", ":connect":
 		fmt.Println("--> COMMAND HELP FOR: :c, :connect")
 		fmt.Println()
@@ -629,7 +664,7 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("DESCRIPTION:")
 		fmt.Println("\tUse `:c` to connect to a TCP TLS listener of another STAR node. <addr> uses the Golang network address format.")
 		fmt.Println()
-		fmt.Println("Note: <addr> can be in port or ip:port format. If just a format, it must be preceded by a ':', such as 'shell.tcp:4444' or ':4444'")
+		fmt.Println("Note: <addr> can be in port or ip:port format. If just port format, it must be preceded by a ':', such as 'shell.tcp:4444' or ':4444'")
 	case ":chat":
 		fmt.Println("--> COMMAND HELP FOR: :chat")
 		fmt.Println()
@@ -768,10 +803,22 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("--> COMMAND HELP FOR: :ltmpdir")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("\t:ltmpdir  -  Create a temporary directory and make it the working directory.")
+		fmt.Println("\t:ltmpdir  -  Create a temporary directory on the local terminal and make it the working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\tCreates a temporary directory on the local temrinal's machine and changes the working directory to it.")
+		fmt.Println("\tCreates a temporary directory on the local terminal's machine and changes the working directory to it.")
+		fmt.Println()
+	case ":pf", ":portforward":
+		fmt.Println("--> COMMAND HELP FOR: :pf :portforward")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:pf <src> <dst>                                        -  Creates a listener on <src> to forward traffic to <dst>.")
+		fmt.Println("\t:pf term:tcp:127.0.0.1:9022 agent001:tcp:127.0.0.1:22  -  Creates a listener on the local terminal to forward traffic to the local SSH port on agent001.")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\t")
+		fmt.Println()
+		fmt.Println("\tNote: Both <src> and <dst> must follow the format of <agent>:<protocol>:<ip>:<port>, where protocol is udp or tcp. Due to the nature of port forwarding, no assumptions will be made when one of these are not specified. In the case of <src>, 'term' may be specified instead of an agent to create the listener on the local terminal.")
 		fmt.Println()
 	case ":rcat":
 		fmt.Println("--> COMMAND HELP FOR: :rcat")
@@ -800,43 +847,48 @@ func terminalCommandHelp(topic string) {
 	case ":rls", ":rdir":
 		fmt.Println("--> COMMAND HELP FOR: :rls, :rdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rls                 -  Lists the contents of the working directory of the currently focused remote agent.")
+		fmt.Println("\t:rls <agent>         -  Lists the contents of the working directory of the specified agent.")
+		fmt.Println("\t:rls <path>          -  Lists the contents of the specified path directory of the currently focused remote agent.")
+		fmt.Println("\t:rls <agent> <path>  -  Lists the contents of the specified path directory of the specified agent.")
+		fmt.Println("\t:rls agent001 /etc   -  Lists the contents of '/etc' on agent001.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tLists the contents of a directory on the remote agent.")
 		fmt.Println()
 	case ":rmkdir":
 		fmt.Println("--> COMMAND HELP FOR: :rmkdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println(":rmkdir  -  With no arguments, same as running `:rtmpdir`.")
+		fmt.Println("\t:rmkdir                         -  With no arguments, same as running `:rtmpdir` on the active agent.")
+		fmt.Println("\t:rmkdir <path>                  -  Creates remote directory on active remote agent.")
+		fmt.Println("\t:rmkdir <agent>                 -  Same as running `:rmpdir` on the specified agent.")
+		fmt.Println("\t:rmkdir <agent> <path>          -  Creates remote directory on the specified agent.")
+		fmt.Println("\t:rmkdir agent002 /tmp/deleteme  -  Creates `/tmp/deleteme` on the specified agent.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tCreates a directory on the remote agent's machine and changes the working directory to it. If any parent directories do not exist, they will be created.")
 		fmt.Println()
 	case ":rpwd":
 		fmt.Println("--> COMMAND HELP FOR: :rpwd")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rpwd          -  Print the active remote agent's working directory.")
+		fmt.Println("\t:rpwd <agent>  -  Print the specified agent's working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tDisplay's the remote agent's current working directory.")
 		fmt.Println()
 	case ":rtmpdir":
 		fmt.Println("--> COMMAND HELP FOR: :lmkdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rtmpdir          -  Creates a temporary directory on the currently focused remote agent and makes it the working directory.")
+		fmt.Println("\t:rtmpdir <agent>  -  Creates a temporary directory on the specified remote agent and makes it the working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tCreates a temporary directory on the remote agent's machine and changes the working directory to it.")
 		fmt.Println()
 	case ":s", ":set", ":setting", ":settings":
 		fmt.Println("--> COMMAND HELP FOR: :s, :set, :setting, :settings")
@@ -870,8 +922,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("\tUse `:t` to terminate agents, connctions, listeners, and streams. Use `:l <agent>` for a listing of identifiers that can be used for that agent.")
 	case ":u", ":up", ":upload":
 		fmt.Println("--> COMMAND HELP FOR: :u, :up, :upload")
-		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
 		fmt.Println("USAGE: ")
 		fmt.Println("\t:u <local_src_file>                            -  Uploads the local source file to the active agent's current directory.")
@@ -907,23 +957,23 @@ func terminalCommandHelp(topic string) {
 	case "agent", "agents":
 		fmt.Println("--> ABOUT AGENTS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Agents are remote nodes intended to be placed on the targeted 'victim' machines of the engagement. Agents should only be run on machines where the security researcher intends for Remote Code Execution (RCE) to occur.")
 	case "connection", "connections":
 		fmt.Println("--> ABOUT CONNECTIONS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Connections are existing network connections with other S.T.A.R. nodes, 'third-party' shells (such as netcat), or file transfers.")
 	case "constellation", "constellations":
 		fmt.Println("--> ABOUT CONSTELLATIONS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Constellations are a grouping of connected S.T.A.R. nodes.")
 	case "shell", "shells":
 		fmt.Println("--> ABOUT SHELLS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Shells are non-S.T.A.R. instances of RCE on remote boxes. These are commonly netcat or shells generated with 'msfvenom' or similar tools. S.T.A.R. has very limited interaction with these, allowing for command interaciton only.")
 	case "terminal", "terminals":
 		fmt.Println("--> ABOUT TERMINALS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Terminals are 'local' nodes intended to be placed on machines which will be used by the security researcher or as a 'pivot' box. Terminals should be used instead of agents on pivot boxes where RCE is not desired.")
 	default:
 		fmt.Println("------------------------------ STAR Help Overview -----------------------------")
 		fmt.Println("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
@@ -947,7 +997,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":j :jump \t Jump (change focus) to another agent.")
 		fmt.Fprintln(w, ":k :kill :killswitch \t Panic button! Destroy and cleanup constellation.")
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
-		fmt.Fprintln(w, ":p :proxy \t Creates a SOCKS5 server tunnel.")
 		fmt.Fprintln(w, ":pf :portforward \t Creates a port-forwarding tunnel.")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
 		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
@@ -1436,7 +1485,7 @@ func terminalCommandList(context string) (err error) {
 	} else {
 		agent, ok := agentFriendlyTracker[context]
 		if ok {
-			fmt.Println(fmt.Sprintf("%s (%s)", agent.FriendlyName, agent.Node.ID))
+			TerminalPrinter(star.ThisNode.ID, star.StreamID{}, fmt.Sprintf("%s (%s)", agent.FriendlyName, agent.Node.ID), "\n")
 			fmt.Println()
 			fmt.Fprintln(w, "Connections: \t ")
 			//Sort then print
@@ -1485,8 +1534,7 @@ func terminalCommandList(context string) (err error) {
 			fmt.Fprintln(w, " \t ")
 			w.Flush()
 		} else {
-			printError(fmt.Sprintf("%s is not a valid identifier! Use one of the following!", context))
-			terminalCommandList("all")
+			printError(fmt.Sprintf("%s is not a valid identifier!", context))
 		}
 	}
 
@@ -1504,7 +1552,7 @@ func terminalCommandLocalCat(src string) (err error) {
 
 	r := bufio.NewReader(f)
 	for {
-		buff := make([]byte, star.RandDataSize())
+		buff := make([]byte, 65535)
 		n, err := r.Read(buff)
 		if err == nil && n > 0 {
 			fmt.Printf("%s", buff[:n])
@@ -1521,7 +1569,7 @@ func terminalCommandLocalChangeDirectory(directory string) (err error) {
 	os.Chdir(directory)
 	newdirectory, _ := os.Getwd()
 
-	fmt.Println("Changed terminal working directory from [", olddirectory, "] to [", newdirectory, "]")
+	TerminalPrinter(star.ThisNode.ID, star.StreamID{}, "Changed terminal working directory from [", olddirectory, "] to [", newdirectory, "]", "\n")
 
 	return
 }
@@ -1574,7 +1622,7 @@ func terminalCommandLocalMakeDirectory(directory string) (err error) {
 
 func terminalCommandLocalPresentWorkingDirectory() (err error) {
 	path, _ := os.Getwd()
-	fmt.Println(path)
+	TerminalPrinter(star.ThisNode.ID, star.StreamID{}, path, "\n")
 
 	return
 }
@@ -1706,7 +1754,71 @@ func terminalCommandTerminate(context string) (err error) {
 	} else if context == "" {
 		terminalCommandHelp(":t")
 		printError("Must explicitly specify agent, agent:connection, agent:listener, agent:shell, or agent:stream!")
-	} else if !strings.HasPrefix(context, "agent") {
+	} else if agent.Node.ID == star.ThisNode.ID {
+		// Handle locally
+		if len(identifiers) == 1 {
+			printError("Cannot terminate the terminal with :t! Use :q instead!")
+			return
+		} else if len(identifiers) == 2 {
+			match := regexp.MustCompile(`^(conn|listener|stream)(\d+)$`).FindStringSubmatch(identifiers[1])
+			if len(match) == 3 {
+				index, _ := strconv.ParseUint(match[2], 10, 64)
+				invalid := false
+				switch match[1] {
+				case "conn":
+					id, ok := star.ThisNodeInfo.ConnectionIDs[uint(index)]
+					if !ok {
+						invalid = true
+					} else {
+						conn, ok := star.GetConnectionById(id)
+						if !ok {
+							invalid = true
+						} else {
+							conn.Close()
+							star.ThisNodeInfo.RemoveConnector(id)
+						}
+					}
+				case "listener":
+					id, ok := star.ThisNodeInfo.ListenerIDs[uint(index)]
+					if !ok {
+						invalid = true
+					} else {
+						listener, ok := star.GetListener(id)
+						if !ok {
+							invalid = true
+						} else {
+							listener.Close()
+							star.ThisNodeInfo.RemoveListener(id)
+						}
+					}
+				case "stream":
+					stream, ok := star.GetActiveStream(star.ThisNodeInfo.StreamIDs[uint(index)])
+					if !ok {
+						invalid = true
+					} else {
+						stream.Close()
+					}
+				default:
+					terminalCommandList(identifiers[0])
+					printError(fmt.Sprintf("%s has an invalid sub-identifier! Must be one of the ones listed above!", context))
+					return
+				}
+
+				if invalid {
+					terminalCommandList(identifiers[0])
+					printError(fmt.Sprintf("%s has an invalid sub-identifier! Must be one of the ones listed above!", context))
+				}
+			} else {
+				terminalCommandList(identifiers[0])
+				printError(fmt.Sprintf("%s has an invalid sub-identifier! Must be one of the ones listed above!", context))
+				return
+			}
+		} else {
+			terminalCommandHelp(":t")
+			printError("Invalid number of separators!")
+			return
+		}
+	} else if !strings.HasPrefix(context, "agent") && agent.Node.ID != star.ThisNode.ID {
 		printError(fmt.Sprintf("%s is not an agent! Terminating termination attempt.", identifiers[0]))
 	} else {
 		if len(identifiers) == 1 {
@@ -1779,7 +1891,7 @@ func terminalCommandUpload(node star.NodeID, src string, dst string) (err error)
 		meta := star.NewStreamMetaUpload(node, dst, func(data []byte) {}, func(s star.StreamID) {})
 		r := bufio.NewReader(f)
 		for {
-			buff := make([]byte, star.RandDataSize())
+			buff := make([]byte, 65535)
 			n, err := r.Read(buff)
 			if err == nil && n > 0 {
 				meta.Write(buff[:n])
@@ -1796,7 +1908,7 @@ func terminalCommandUpload(node star.NodeID, src string, dst string) (err error)
 
 func terminalCommandQuit(err error, errmsg string) {
 	if err != nil {
-		fmt.Println(err)
+		printError(err.Error())
 		printError(errmsg)
 		printInfo("Quitting due to error!")
 	} else {
@@ -1823,14 +1935,20 @@ func terminalCommandSendCommand(cmd string) (err error) {
 	} else {
 		if activeStream.IsEmptyStreamID() {
 			// New stream!
+			var n star.NodeID
+			var s star.StreamID
+
+			n = activeNode
+
 			meta := star.NewStreamMetaCommand(activeNode, cmd, func(data []byte) {
-				fmt.Printf("%s", data)
+				TerminalPrinter(n, s, fmt.Sprintf("%s", data))
 			}, func(s star.StreamID) {
 				if activeStream == s {
 					activeStream = star.StreamID{}
 				}
 			})
 			activeStream = meta.ID
+			s = meta.ID
 		} else {
 			meta, ok := star.GetActiveStream(activeStream)
 			if ok {
@@ -1878,6 +1996,77 @@ func terminalCommandChatHistory() (err error) {
 
 	w.Flush()
 
+	return
+}
+
+func terminalCommandPortForward(src string, dst string) (err error) {
+	srcNode, srcProtocol, srcAddress, ok := terminalProxyForwardParser(src)
+	if !ok {
+		printError("Error with <src> formatting, unable to continue setting up port forwarding!")
+		return
+	}
+
+	dstNode, dstProtocol, dstAddress, ok := terminalProxyForwardParser(dst)
+	if !ok {
+		printError("Error with <dst> formatting, unable to continue setting up port forwarding!")
+		return
+	}
+	if dstNode == star.ThisNode.ID {
+		printError("<dst> agent cannot be this terminal, only the <src> agent can be.")
+		return
+	}
+
+	srcType := star.ConnectorType_PortForwardTCP
+	if srcProtocol == "udp" {
+		srcType = star.ConnectorType_PortForwardUDP
+	}
+
+	dstType := star.ConnectorType_PortForwardTCP
+	if dstProtocol == "udp" {
+		dstType = star.ConnectorType_PortForwardUDP
+	}
+
+	msg := star.NewMessagePortForwardRequest(srcAddress, srcType, dstNode, dstAddress, dstType)
+	msg.Destination = srcNode
+	if msg.Destination == star.ThisNode.ID {
+		star.ProcessMessagePortForward(msg)
+		printInfo("Portforwarding should be successful.")
+	} else {
+		msg.Send(star.ConnectID{})
+	}
+
+	return
+}
+
+func terminalProxyForwardParser(a string) (node star.NodeID, protocol string, address string, ok bool) {
+	aSplit := strings.Split(a, ":")
+
+	if len(aSplit) != 4 {
+		printError(fmt.Sprintf("%s is an invalid format, expected <agent>:<protocol>:<ip>:<port>."))
+		return
+	}
+
+	if aSplit[0] == "term" {
+		node = star.ThisNode.ID
+	} else {
+		n, ok_i := AgentTrackerGetInfoByFriendly(aSplit[0])
+		if !ok_i {
+			printError("Invalid identifier for <agent>, use 'term' or one of the following agent identifiers:")
+			terminalCommandList("all")
+			return
+		}
+		node = n.Node.ID
+	}
+
+	protocol = aSplit[1]
+	if protocol != "udp" && protocol != "tcp" {
+		printError(fmt.Sprintf("<protocol> must be either 'tcp' or 'udp', not %s", protocol))
+		return
+	}
+
+	address = aSplit[2] + ":" + aSplit[3]
+
+	ok = true
 	return
 }
 
@@ -1974,6 +2163,14 @@ func TerminalProcessMessageError(msg *star.Message) {
 		case star.MessageErrorResponseTypeDirectoryCreationError:
 			histSubcontext = "Failed to create directory."
 			printError(fmt.Sprintf("%s has reported an error when attempting to create a directory. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
+		case star.MessageErrorResponseTypeFileServerConnectionLost:
+			histSubcontext = "Fileserver connection was lost."
+		case star.MessageErrorResponseTypeFileServerConnectionNotFound:
+			histSubcontext = "Unable to find connection associated with fileserver."
+			printError(fmt.Sprintf("%s has reported an error when attempting to find a connection associated with a fileserver. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
+		case star.MessageErrorResponseTypePortForwardingConnectionNotFound:
+			histSubcontext = "Unable to find connection associated with port forwarder."
+			printError(fmt.Sprintf("%s has reported an error when attempting to find a connection associated with a port forwarder. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		default:
 			histSubcontext = "Unspecified error."
 			printError(fmt.Sprintf("%s has reported: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
@@ -1988,11 +2185,13 @@ func TerminalProcessSyncRequest(msg *star.Message) {
 	var reqMsg star.MessageSyncRequest
 
 	err := msg.GobDecodeMessage(&reqMsg)
-	if err == nil {
-		syncMsg := star.NewMessageSyncResponse()
-		syncMsg.Destination = msg.Source
-		syncMsg.Send(star.ConnectID{})
+	if err != nil {
+		return
 	}
+
+	syncMsg := star.NewMessageSyncResponse()
+	syncMsg.Destination = msg.Source
+	syncMsg.Send(star.ConnectID{})
 
 	RecordLog(time.Now(), msg.Source, "sync", "request", "")
 }
@@ -2001,12 +2200,14 @@ func TerminalProcessSyncResponse(msg *star.Message) {
 	var resMsg star.MessageSyncResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
+	if err != nil {
+		return
+	}
 
-		if !terminalSettings["sync.mute"].Data.(bool) {
-			printInfo(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg.Source, star.StreamID{})))
-		}
+	AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
+
+	if !terminalSettings["sync.mute"].Data.(bool) {
+		printInfo(fmt.Sprintf("%s has synchronized.", FriendlyAgentName(msg.Source, star.StreamID{})))
 	}
 
 	RecordLog(time.Now(), msg.Source, "sync", "response", "")
@@ -2016,9 +2217,11 @@ func TerminalProcessMessageNewBind(msg *star.Message) {
 	var resMsg star.MessageNewBindResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		printInfo(fmt.Sprintf("%s has reported a new bind/listener on %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
+	if err != nil {
+		return
 	}
+
+	printInfo(fmt.Sprintf("%s has reported a new bind/listener on %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
 
 	RecordLog(time.Now(), msg.Source, "constellation", "bind", resMsg.Address)
 
@@ -2030,9 +2233,11 @@ func TerminalProcessMessageNewConnection(msg *star.Message) {
 	var resMsg star.MessageNewConnectionResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
+	if err != nil {
+		return
 	}
+
+	printInfo(fmt.Sprintf("%s has reported a new connection with %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Address))
 
 	RecordLog(time.Now(), msg.Source, "constellation", "conn", resMsg.Address)
 
@@ -2044,18 +2249,22 @@ func TerminalProcessMessageHello(msg *star.Message) {
 	var resMsg star.MessageHelloResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
+	if err != nil {
+		return
 	}
+
+	AgentTrackerUpdateInfo(&resMsg.Node, &resMsg.Info)
 }
 
 func TerminalProcessMessageRemoteCDResponse(msg *star.Message) {
 	var resMsg star.MessageRemoteCDResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		printInfo(fmt.Sprintf("%s reports that it has changed its working directory from [%s] to [%s], per %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.OldDirectory, resMsg.NewDirectory, FriendlyAgentName(resMsg.Requester, star.StreamID{})))
+	if err != nil {
+		return
 	}
+
+	printInfo(fmt.Sprintf("%s reports that it has changed its working directory from [%s] to [%s], per %s.", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.OldDirectory, resMsg.NewDirectory, FriendlyAgentName(resMsg.Requester, star.StreamID{})))
 
 	RecordLog(time.Now(), msg.Source, "remote cmd", "cd", fmt.Sprintf("From [ %s ] to [ %s ].", resMsg.OldDirectory, resMsg.NewDirectory))
 }
@@ -2064,29 +2273,27 @@ func TerminalProcessMessageRemoteLSResponse(msg *star.Message) {
 	var resMsg star.MessageRemoteLSResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		printInfo(fmt.Sprintf("%s reports the following file/directory information for [%s]:", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
+	if err != nil {
+		return
+	}
+	printInfo(fmt.Sprintf("%s reports the following file/directory information for [%s]:", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', 0)
 
-		// Directories first
-		for _, f := range resMsg.Files {
-			if f.IsDir {
-				fmt.Fprintln(w, "["+f.Name+"]", "\t", f.ModTime.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode, "\t", f.Size)
-			}
+	// Directories first
+	for _, f := range resMsg.Files {
+		if f.IsDir {
+			fmt.Fprintln(w, "["+f.Name+"]", "\t", f.ModTime.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode, "\t", f.Size)
 		}
-
-		// Files second
-		for _, f := range resMsg.Files {
-			if !f.IsDir {
-				fmt.Fprintln(w, f.Name, "\t", f.ModTime.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode, "\t", f.Size)
-			}
-		}
-
-		w.Flush()
-	} else {
-		fmt.Printf("%v+", err)
 	}
 
+	// Files second
+	for _, f := range resMsg.Files {
+		if !f.IsDir {
+			fmt.Fprintln(w, f.Name, "\t", f.ModTime.Format(terminalSettings["display.timestamp"].Data.(string)), "\t", f.Mode, "\t", f.Size)
+		}
+	}
+
+	w.Flush()
 	RecordLog(time.Now(), msg.Source, "remote cmd", "ls", resMsg.Directory)
 }
 
@@ -2094,10 +2301,11 @@ func TerminalProcessMessageRemoteMkDirResponse(msg *star.Message) {
 	var resMsg star.MessageRemoteMkDirResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		printInfo(fmt.Sprintf("%s reports that its PWD has been changed to a newly created directory: [ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
+	if err != nil {
+		return
 	}
 
+	printInfo(fmt.Sprintf("%s reports that its PWD has been changed to a newly created directory: [ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
 	RecordLog(time.Now(), msg.Source, "remote cmd", "mkdir", resMsg.Directory)
 }
 
@@ -2105,10 +2313,11 @@ func TerminalProcessMessageRemotePWDResponse(msg *star.Message) {
 	var resMsg star.MessageRemotePWDResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		printInfo(fmt.Sprintf("%s reports that its PWD=[ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
+	if err != nil {
+		return
 	}
 
+	printInfo(fmt.Sprintf("%s reports that its PWD=[ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
 	RecordLog(time.Now(), msg.Source, "remote cmd", "pwd", resMsg.Directory)
 }
 
@@ -2116,10 +2325,11 @@ func TerminalProcessMessageRemoteTmpDirResponse(msg *star.Message) {
 	var resMsg star.MessageRemoteTmpDirResponse
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		printInfo(fmt.Sprintf("%s reports that its PWD has been changed to a new temporary directory: [ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
+	if err != nil {
+		return
 	}
 
+	printInfo(fmt.Sprintf("%s reports that its PWD has been changed to a new temporary directory: [ %s ]", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Directory))
 	RecordLog(time.Now(), msg.Source, "remote cmd", "tmpdir", resMsg.Directory)
 }
 
@@ -2127,60 +2337,66 @@ func TerminalProcessMessageChat(msg *star.Message) {
 	var resMsg star.MessageChatRequest
 
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		// Expand/replace agent/term names if appropriate
-		agentTrackerMutex.Lock()
-		defer agentTrackerMutex.Unlock()
-
-		for _, a := range agentFriendlyTracker {
-			resMsg.Content = strings.ReplaceAll(resMsg.Content, a.Node.ID.String(), a.FriendlyName)
-		}
-
-		// Display
-		printChat(fmt.Sprintf("%s@%s says: %s", resMsg.Nickname, FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Content))
-
-		// Add to history (takes care of record history as well)
-		HistoryChatPush(historyChatItem{Timestamp: time.Now(), Node: msg.Source, Nickname: resMsg.Nickname, Content: resMsg.Content})
+	if err != nil {
+		return
 	}
+
+	// Expand/replace agent/term names if appropriate
+	agentTrackerMutex.Lock()
+	defer agentTrackerMutex.Unlock()
+
+	for _, a := range agentFriendlyTracker {
+		resMsg.Content = strings.ReplaceAll(resMsg.Content, a.Node.ID.String(), a.FriendlyName)
+	}
+
+	// Display
+	printChat(fmt.Sprintf("%s@%s says: %s", resMsg.Nickname, FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.Content))
+
+	// Add to history (takes care of record history as well)
+	HistoryChatPush(historyChatItem{Timestamp: time.Now(), Node: msg.Source, Nickname: resMsg.Nickname, Content: resMsg.Content})
 }
 
 func TerminalProcessMessageFileServerInitiateTransfer(msg *star.Message) {
 	var resMsg star.MessageFileServerInitiateTransferRequest
 	err := msg.GobDecodeMessage(&resMsg)
-	if err == nil {
-		src, err := FileServerTrackerGetFilename(resMsg.FileConnID)
-		if err == nil {
-			go func() {
-				printInfo(fmt.Sprintf("Request to download [ %s ] from %s has been initiated.", src, FriendlyAgentName(msg.Source, star.StreamID{})))
-				// Open the file
-				f, err := os.Open(src)
-				if err != nil {
-					printError(fmt.Sprintf("Error attempting to open local file [ %s ] for file-server: %v", src, err))
-					return
-				}
-				defer f.Close()
+	if err != nil {
+		return
+	}
 
-				// File server stream!
-				meta := star.NewStreamMetaFileServer(msg.Source, resMsg.AgentConnID.String(), func(data []byte) {}, func(s star.StreamID) {})
-				r := bufio.NewReader(f)
-				for {
-					buff := make([]byte, star.RandDataSize())
-					n, err := r.Read(buff)
-					if err == nil && n > 0 {
-						meta.Write(buff[:n])
-					} else {
-						break
-					}
-				}
+	src, err := FileServerTrackerGetFilename(resMsg.FileConnID)
+	if err != nil {
+		return
+	}
 
-				printInfo(fmt.Sprintf("Request to download [ %s ] from %s has completed.", src, FriendlyAgentName(msg.Source, star.StreamID{})))
+	go func() {
+		printInfo(fmt.Sprintf("Request to download [ %s ] from %s has been initiated.", src, FriendlyAgentName(msg.Source, star.StreamID{})))
+		// Open the file
+		f, err := os.Open(src)
+		if err != nil {
+			printError(fmt.Sprintf("Error attempting to open local file [ %s ] for file-server: %v", src, err))
+			return
+		}
+		defer f.Close()
 
-				meta.Close()
-			}()
+		// File server stream!
+		meta := star.NewStreamMetaFileServer(msg.Source, resMsg.AgentConnID.String(), func(data []byte) {}, func(s star.StreamID) {})
+		r := bufio.NewReader(f)
+		for {
+			buff := make([]byte, 65535)
+			n, err := r.Read(buff)
+			if err == nil && n > 0 {
+				meta.Write(buff[:n])
+			} else {
+				break
+			}
 		}
 
-		RecordLog(time.Now(), msg.Source, "fileserver", "transfer initated", src)
-	}
+		printInfo(fmt.Sprintf("Request to download [ %s ] from %s has completed.", src, FriendlyAgentName(msg.Source, star.StreamID{})))
+
+		meta.Close()
+	}()
+
+	RecordLog(time.Now(), msg.Source, "fileserver", "transfer initated", src)
 
 	return
 }
@@ -2191,7 +2407,7 @@ func TerminalProcessMessageFileServerInitiateTransfer(msg *star.Message) {
 func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
 	if stream.IsEmptyStreamID() {
 		if id.IsBroadcastNodeID() {
-			return "?????"
+			return ""
 		} else if id == star.ThisNode.ID {
 			return "This Terminal"
 		} else {
@@ -2204,7 +2420,7 @@ func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
 		}
 	} else {
 		if id.IsBroadcastNodeID() {
-			return "?????"
+			return ""
 		} else if id == star.ThisNode.ID {
 			return "This Terminal"
 		} else {
@@ -2576,6 +2792,10 @@ func TerminalConnectorTypeToString(t star.ConnectorType) (res string) {
 		res = "[shell][udp.tls]"
 	case star.ConnectorType_TCPTLS:
 		res = "[tcp.tls]"
+	case star.ConnectorType_PortForwardTCP:
+		res = "[portforward][tcp]"
+	case star.ConnectorType_PortForwardUDP:
+		res = "[portforward][udp]"
 	default:
 		res = "[unk]"
 	}
