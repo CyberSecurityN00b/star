@@ -77,8 +77,8 @@ func STARCoreSetup() {
 	messageTracker = make(map[MessageID]bool)
 	messageTrackerMutex = &sync.Mutex{}
 
-	ActiveStreams = make(map[StreamID]*StreamMeta)
-	ActiveStreamsMutex = &sync.Mutex{}
+	activeStreams = make(map[StreamID]*StreamMeta)
+	activeStreamsMutex = &sync.Mutex{}
 }
 
 // Allows for the creation of listeners (bind) and connections (connect) via

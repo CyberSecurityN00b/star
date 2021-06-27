@@ -57,7 +57,7 @@ func (connector *PortForward_Connector) Connect() (err error) {
 
 	conn.NetConn = n
 	conn.Type = connector.Type
-	conn.DstAddress = ""
+	conn.DstAddress = connector.DstAddress
 	conn.DstNode = connector.DstNode
 	conn.DstType = connector.DstType
 	conn.ID = RegisterConnection(conn)
@@ -117,7 +117,9 @@ func (connector *PortForward_Connector) Listen() (err error) {
 }
 
 func (connector *PortForward_Connector) Close() {
-	(*connector.Listener).Close()
+	if (*connector.Listener) != nil {
+		(*connector.Listener).Close()
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -136,7 +138,10 @@ func (c PortForward_Connection) Handle() {
 	defer func() {
 		recover()
 		NewMessageError(MessageErrorResponseTypePortForwardingConnectionLost, addr).Send(ConnectID{})
-		ActiveStreams[c.StreamID].Close()
+		s, ok := GetActiveStream(c.StreamID)
+		if ok {
+			s.Close()
+		}
 		UnregisterConnection(c.ID)
 		ThisNodeInfo.RemoveConnector(c.ID)
 	}()
@@ -162,16 +167,13 @@ func (c PortForward_Connection) Handle() {
 	}
 	c.StreamID = meta.ID
 
+	buff := make([]byte, c.DataSize())
 	for {
-		buff := make([]byte, c.DataSize())
 		n, err := c.Read(buff)
 		if err == nil && n > 0 {
 			meta.Write(buff[:n])
 		} else {
-			if c.NetConn != nil {
-				c.NetConn.Close()
-			}
-			return
+			c.Close()
 		}
 	}
 }

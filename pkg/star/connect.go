@@ -3,6 +3,7 @@ package star
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"os"
 	"sync"
 	"time"
 )
@@ -84,9 +85,6 @@ const (
 
 	ConnectorType_PortForwardTCP
 	ConnectorType_PortForwardUDP
-
-	ConnectorType_Socks5ProxyTCP
-	ConnectorType_Socks5ProxyUDP
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -166,9 +164,16 @@ func SetupConnectionCertificate(certPEMBlock []byte, keyPEMBlock []byte) (err er
 	pool := x509.NewCertPool()
 	ConnectionCert, err = tls.X509KeyPair(certPEMBlock, keyPEMBlock)
 	pool.AppendCertsFromPEM(certPEMBlock)
-	//TODO: Change below
-	ConnectionConfig = &tls.Config{Certificates: []tls.Certificate{ConnectionCert}, InsecureSkipVerify: true} //, InsecureSkipVerify: false, ClientAuth: tls.RequireAndVerifyClientCert, RootCAs: pool, ClientCAs: pool, ServerName: "star:node"}
+	ConnectionConfig = &tls.Config{Certificates: []tls.Certificate{ConnectionCert}, InsecureSkipVerify: false, ClientAuth: tls.RequireAndVerifyClientCert, RootCAs: pool, ClientCAs: pool, ServerName: "a"}
 	return
+}
+
+func CheckNoActivePorts() {
+	if ThisNode.Type == NodeTypeAgent {
+		if len(listenerTracker) == 0 && len(connectionTracker) == 0 {
+			os.Exit(1)
+		}
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////

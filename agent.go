@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/CyberSecurityN00b/star/pkg/star"
 )
@@ -24,6 +25,17 @@ func main() {
 	star.NewTCPListener("0.0.0.0:42069") // Create a listener
 	//star.NewTCPConnection("www.example.com:80") // Connect to a listener
 
+	// If nothing is open, just bail
+	bailSynchronization := time.NewTicker(1 * time.Minute)
+	go func() {
+		for {
+			select {
+			case <-bailSynchronization.C:
+				star.CheckNoActivePorts()
+			}
+		}
+	}()
+
 	// Send a "hello" message to any existing connections
 	helloMsg := star.NewMessageHello()
 	helloMsg.Send(star.ConnectID{})
@@ -37,7 +49,6 @@ func main() {
 	errMsg.Send(star.ConnectID{})
 
 	//Handle termination
-	// TODO: change false to true when "done" with development
 	termMsg := star.NewMessageTerminate(star.MessageTerminateTypeAgent, 0)
 	star.ThisNode.MessageProcessor(termMsg)
 }
@@ -48,23 +59,21 @@ func initAgent() {
 	star.STARCoreSetup()
 	star.ThisNode = star.NewNode(star.NodeTypeAgent)
 	star.ThisNode.MessageProcessor = AgentProcessMessage
+	star.ThisNode.Printer = func(star.NodeID, star.StreamID, ...interface{}) {}
 
 	star.ThisNodeInfo.Setup()
 
 	// Setup connection cert
 	conncrt, err := fs.ReadFile("connection.crt")
 	if err != nil {
-		print(err)
 		os.Exit(1)
 	}
 	connkey, err := fs.ReadFile("connection.key")
 	if err != nil {
-		print(err)
 		os.Exit(1)
 	}
 	err = star.SetupConnectionCertificate(conncrt, connkey)
 	if err != nil {
-		print(err)
 		os.Exit(1)
 	}
 }
@@ -101,8 +110,6 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessFileServerBind(msg)
 	case star.MessageTypeFileServerConnect:
 		AgentProcessFileServerConnect(msg)
-	case star.MessageTypeSocks5ProxyRequest:
-		star.ProcessMessageSocks5Proxy(msg)
 	case star.MessageTypePortForwardRequest:
 		star.ProcessMessagePortForward(msg)
 	}
@@ -219,7 +226,7 @@ func AgentProcessTerminateRequest(msg *star.Message) {
 			if !ok {
 				invalid = true
 			} else {
-				stream.Close()
+				go stream.Close()
 			}
 		default:
 			errMsg := star.NewMessageError(star.MessageErrorResponseTypeUnsupportedTerminationType, fmt.Sprintf("%d", reqMsg.Type))

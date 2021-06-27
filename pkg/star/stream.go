@@ -36,8 +36,8 @@ type StreamTakeover struct {
 	ID StreamID
 }
 
-var ActiveStreams map[StreamID]*StreamMeta
-var ActiveStreamsMutex *sync.Mutex
+var activeStreams map[StreamID]*StreamMeta
+var activeStreamsMutex *sync.Mutex
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -109,21 +109,6 @@ func NewStreamMetaPortForwardingTCP(dstID NodeID, context string, writer func(da
 
 func NewStreamMetaPortForwardingUDP(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
 	meta = NewStreamMeta(StreamTypePortForwardUDP, dstID, context, writer, closer)
-	return
-}
-
-func NewStreamMetaSOCKS5TCPStream(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeSocks5ProxyTCPStream, dstID, context, writer, closer)
-	return
-}
-
-func NewStreamMetaSOCKS5TCPBind(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeSocks5ProxyTCPBind, dstID, context, writer, closer)
-	return
-}
-
-func NewStreamMetaSOCKS5UDP(dstID NodeID, context string, writer func(data []byte), closer func(s StreamID)) (meta *StreamMeta) {
-	meta = NewStreamMeta(StreamTypeSocks5ProxyUDP, dstID, context, writer, closer)
 	return
 }
 
@@ -199,27 +184,27 @@ func (meta *StreamMeta) Close() {
 ///////////////////////////////////////////////////////////////////////////////
 
 func NewActiveStream(tracker *StreamMeta) {
-	ActiveStreamsMutex.Lock()
-	defer ActiveStreamsMutex.Unlock()
+	activeStreamsMutex.Lock()
+	defer activeStreamsMutex.Unlock()
 
 	id := tracker.ID
-	ActiveStreams[id] = tracker
+	activeStreams[id] = tracker
 	ThisNodeInfo.AddStream(tracker.ID, tracker.Type, tracker.Context, tracker.remoteNodeID)
 }
 
 func GetActiveStream(id StreamID) (tracker *StreamMeta, ok bool) {
-	ActiveStreamsMutex.Lock()
-	defer ActiveStreamsMutex.Unlock()
+	activeStreamsMutex.Lock()
+	defer activeStreamsMutex.Unlock()
 
-	tracker, ok = ActiveStreams[id]
+	tracker, ok = activeStreams[id]
 	return
 }
 
 func RemoveActiveStream(id StreamID) {
-	ActiveStreamsMutex.Lock()
-	defer ActiveStreamsMutex.Unlock()
+	activeStreamsMutex.Lock()
+	defer activeStreamsMutex.Unlock()
 
-	delete(ActiveStreams, id)
+	delete(activeStreams, id)
 	ThisNodeInfo.RemoveStream(id)
 }
 
@@ -251,9 +236,6 @@ const (
 	StreamTypeShell
 	StreamTypePortForwardTCP
 	StreamTypePortForwardUDP
-	StreamTypeSocks5ProxyTCPStream
-	StreamTypeSocks5ProxyTCPBind
-	StreamTypeSocks5ProxyUDP
 )
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -338,7 +320,7 @@ func HandleStreamCreate(msg *Message) {
 		case StreamTypeShell:
 			// Terminal will handle this one
 			meta.funcwriter = func(data []byte) {
-				fmt.Printf("%s", data)
+				ThisNode.Printer(meta.remoteNodeID, meta.ID, fmt.Sprintf("%s", data))
 			}
 			meta.functerminate = func() {}
 		case StreamTypeFileDownload:
@@ -361,8 +343,8 @@ func HandleStreamCreate(msg *Message) {
 
 			// Read from the file
 			go func() {
+				buff := make([]byte, 65535)
 				for {
-					buff := make([]byte, 65535)
 					n, err := r.Read(buff)
 					if err == nil && n > 0 {
 						meta.Write(buff[:n])
@@ -425,8 +407,8 @@ func HandleStreamCreate(msg *Message) {
 			}
 
 			go func() {
+				buff := make([]byte, 65535)
 				for {
-					buff := make([]byte, 65535)
 					n, err := c.Read(buff)
 					if err == nil && n > 0 {
 						meta.Write(buff[:n])
@@ -442,8 +424,8 @@ func HandleStreamCreate(msg *Message) {
 				}
 			}()
 		case StreamTypePortForwardUDP:
-			var n net.Conn
-			n, err = net.Dial("udp", meta.Context)
+			var c net.Conn
+			c, err = net.Dial("udp", meta.Context)
 
 			if err != nil {
 				NewMessageError(0, err.Error()).Send(ConnectID{})
@@ -451,14 +433,29 @@ func HandleStreamCreate(msg *Message) {
 			}
 
 			meta.funcwriter = func(data []byte) {
-				n.Write(data)
+				c.Write(data)
 			}
 			meta.functerminate = func() {
-				n.Close()
+				c.Close()
 			}
-		case StreamTypeSocks5ProxyTCPStream:
-		case StreamTypeSocks5ProxyTCPBind:
-		case StreamTypeSocks5ProxyUDP:
+
+			go func() {
+				buff := make([]byte, 65535)
+				for {
+					n, err := c.Read(buff)
+					if err == nil && n > 0 {
+						meta.Write(buff[:n])
+					} else {
+						if c != nil {
+							c.Close()
+						}
+						if meta != nil {
+							meta.Close()
+						}
+						return
+					}
+				}
+			}()
 		default:
 			meta.Close()
 		}

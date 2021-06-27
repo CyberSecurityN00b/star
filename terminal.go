@@ -61,6 +61,7 @@ func initTerminal() {
 	star.STARCoreSetup()
 	star.ThisNode = star.NewNode(star.NodeTypeTerminal)
 	star.ThisNode.MessageProcessor = TerminalProcessMessage
+	star.ThisNode.Printer = TerminalPrinter
 
 	star.ThisNodeInfo.Setup()
 
@@ -132,6 +133,8 @@ func initTerminal() {
 			}
 		}
 	}()
+
+	termPrintMutex = &sync.Mutex{}
 
 	printInfo(fmt.Sprintf("Terminal Initiated! Terminal ID is %s.", star.ThisNode.ID))
 	printInfo("Good luck and have fun!")
@@ -362,12 +365,6 @@ func handleTerminalInput(input string) {
 		} else {
 			terminalCommandHelp(":ltmpdir")
 		}
-	case ":p", ":proxy":
-		if len(inputs) == 3 {
-			terminalCommandSocks5Proxy(inputs[1], inputs[2])
-		} else {
-			terminalCommandHelp(":p")
-		}
 	case ":pf", ":portforward":
 		if len(inputs) == 3 {
 			terminalCommandPortForward(inputs[1], inputs[2])
@@ -519,14 +516,15 @@ func handleTerminalInput(input string) {
 type ANSIColor string
 
 const (
-	ANSIColor_Chat      ANSIColor = "\033[0;35;51m%s\033[0m"
-	ANSIColor_Error     ANSIColor = "\033[0;31m%s\033[0m"
-	ANSIColor_Info      ANSIColor = "\033[0;36m%s\033[0m"
-	ANSIColor_Debug     ANSIColor = "\033[1;31m%s\033[0m"
-	ANSIColor_Time      ANSIColor = "\033[7m%s\033[0m"
-	ANSIColor_Focus     ANSIColor = "\033[7m%s\033[0m"
-	ANSIColor_Notice    ANSIColor = "\033[33m%s\033[0m"
-	ANSIColor_DeadAgent ANSIColor = "\033[101m%s\033[0m"
+	ANSIColor_Chat             ANSIColor = "\033[0;35;51m%s\033[0m"
+	ANSIColor_Error            ANSIColor = "\033[0;31m%s\033[0m"
+	ANSIColor_Info             ANSIColor = "\033[0;36m%s\033[0m"
+	ANSIColor_Debug            ANSIColor = "\033[1;31m%s\033[0m"
+	ANSIColor_Time             ANSIColor = "\033[7m%s\033[0m"
+	ANSIColor_Focus            ANSIColor = "\033[7m%s\033[0m"
+	ANSIColor_Notice           ANSIColor = "\033[33m%s\033[0m"
+	ANSIColor_DeadAgent        ANSIColor = "\033[101m%s\033[0m"
+	ANSIColor_TermPrintPreface ANSIColor = "\033[0;46m%s\033[0m"
 )
 
 func ANSIColorize(text string, color ANSIColor) string {
@@ -541,33 +539,58 @@ func ANSIColorize(text string, color ANSIColor) string {
 	}
 }
 
+var termPrintLastNode star.NodeID
+var termPrintLastStream star.StreamID
+var termPrintPreface string
+var termPrintMutex *sync.Mutex
+
+func TerminalPrinter(node star.NodeID, stream star.StreamID, a ...interface{}) {
+	termPrintMutex.Lock()
+	defer termPrintMutex.Unlock()
+
+	if !node.IsBroadcastNodeID() && !stream.IsEmptyStreamID() {
+		if termPrintLastNode != node || termPrintLastStream != stream {
+			name := FriendlyAgentName(node, stream)
+			if len(name) > 1 {
+				fmt.Println()
+				fmt.Println(ANSIColorize("OUTPUT SOURCE CHANGED TO <"+name+">", ANSIColor_TermPrintPreface))
+			}
+		}
+	}
+
+	fmt.Print(a...)
+
+	termPrintLastNode = node
+	termPrintLastStream = stream
+}
+
 func printChat(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | chat ]> "+text, ANSIColor_Chat))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | chat ]> "+text, ANSIColor_Chat), "\n")
 	// Chat history is already recorded to file elsewhere
 }
 
 func printError(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | err! ]> "+text, ANSIColor_Error))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | err! ]> "+text, ANSIColor_Error), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "error", text)
 }
 
 func printInfo(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | info ]> "+text, ANSIColor_Info))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | info ]> "+text, ANSIColor_Info), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "info", text)
 }
 
 func printDebug(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | dbg! ]> "+text, ANSIColor_Debug))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | dbg! ]> "+text, ANSIColor_Debug), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "debug", text)
 }
 
 func printNotice(text string) {
 	t := time.Now().Format(terminalSettings["display.timestamp"].Data.(string))
-	fmt.Println(ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | !!!! ]> "+text, ANSIColor_Notice))
+	TerminalPrinter(star.NodeID{}, star.StreamID{}, ANSIColorize(t, ANSIColor_Time), ANSIColorize("[ STAR | !!!! ]> "+text, ANSIColor_Notice), "\n")
 	RecordLog(time.Now(), star.ThisNode.ID, "output", "notice", text)
 }
 
@@ -780,23 +803,10 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("--> COMMAND HELP FOR: :ltmpdir")
 		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println("\t:ltmpdir  -  Create a temporary directory and make it the working directory.")
+		fmt.Println("\t:ltmpdir  -  Create a temporary directory on the local terminal and make it the working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\tCreates a temporary directory on the local temrinal's machine and changes the working directory to it.")
-		fmt.Println()
-	case ":p", ":proxy":
-		fmt.Println("--> COMMAND HELP FOR: :p :proxy")
-		fmt.Println()
-		fmt.Println("USAGE: ")
-		fmt.Println("\t:p <src> <agent>                         -  Creates a SOCKS5 proxy server on <src> to tunnel traffic to a network accessible via <agent>.")
-		fmt.Println("\t:p term:tcp:127.0.0.1:5555 agent001      -  Creates a SOCKS5 proxy server on term001 to tunnel traffic to networks accessible via agent002.")
-		fmt.Println("\t:p agent001:tcp:1.2.3.4:1234 agent003    -  Creates a SOCKS5 proxy server on agent001 to tunnel traffic to networks accessible via agent003.")
-		fmt.Println()
-		fmt.Println("DESCRIPTION:")
-		fmt.Println("\tCreates a SOCKS5 proxy on <src> to tunnel traffic to networks accessible via <agent>.")
-		fmt.Println()
-		fmt.Println("\tNote: <src> must follow the format of <agent>:<protocol>:<ip>:<port>, where protocol is udp or tcp. Due to the nature of proxies, no assumptions will be made when one of these are not specified. In the case of <src>, 'term' may be specified instead of an agent to listen on the local terminal.")
+		fmt.Println("\tCreates a temporary directory on the local terminal's machine and changes the working directory to it.")
 		fmt.Println()
 	case ":pf", ":portforward":
 		fmt.Println("--> COMMAND HELP FOR: :pf :portforward")
@@ -837,43 +847,48 @@ func terminalCommandHelp(topic string) {
 	case ":rls", ":rdir":
 		fmt.Println("--> COMMAND HELP FOR: :rls, :rdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rls                 -  Lists the contents of the working directory of the currently focused remote agent.")
+		fmt.Println("\t:rls <agent>         -  Lists the contents of the working directory of the specified agent.")
+		fmt.Println("\t:rls <path>          -  Lists the contents of the specified path directory of the currently focused remote agent.")
+		fmt.Println("\t:rls <agent> <path>  -  Lists the contents of the specified path directory of the specified agent.")
+		fmt.Println("\t:rls agent001 /etc   -  Lists the contents of '/etc' on agent001.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tLists the contents of a directory on the remote agent.")
 		fmt.Println()
 	case ":rmkdir":
 		fmt.Println("--> COMMAND HELP FOR: :rmkdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
-		fmt.Println(":rmkdir  -  With no arguments, same as running `:rtmpdir`.")
+		fmt.Println("\t:rmkdir                         -  With no arguments, same as running `:rtmpdir` on the active agent.")
+		fmt.Println("\t:rmkdir <path>                  -  Creates remote directory on active remote agent.")
+		fmt.Println("\t:rmkdir <agent>                 -  Same as running `:rmpdir` on the specified agent.")
+		fmt.Println("\t:rmkdir <agent> <path>          -  Creates remote directory on the specified agent.")
+		fmt.Println("\t:rmkdir agent002 /tmp/deleteme  -  Creates `/tmp/deleteme` on the specified agent.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tCreates a directory on the remote agent's machine and changes the working directory to it. If any parent directories do not exist, they will be created.")
 		fmt.Println()
 	case ":rpwd":
 		fmt.Println("--> COMMAND HELP FOR: :rpwd")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rpwd          -  Print the active remote agent's working directory.")
+		fmt.Println("\t:rpwd <agent>  -  Print the specified agent's working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tDisplay's the remote agent's current working directory.")
 		fmt.Println()
 	case ":rtmpdir":
 		fmt.Println("--> COMMAND HELP FOR: :lmkdir")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
-		fmt.Println()
 		fmt.Println("USAGE: ")
+		fmt.Println("\t:rtmpdir          -  Creates a temporary directory on the currently focused remote agent and makes it the working directory.")
+		fmt.Println("\t:rtmpdir <agent>  -  Creates a temporary directory on the specified remote agent and makes it the working directory.")
 		fmt.Println()
 		fmt.Println("DESCRIPTION:")
-		fmt.Println("\t<<<>>>")
+		fmt.Println("\tCreates a temporary directory on the remote agent's machine and changes the working directory to it.")
 		fmt.Println()
 	case ":s", ":set", ":setting", ":settings":
 		fmt.Println("--> COMMAND HELP FOR: :s, :set, :setting, :settings")
@@ -907,8 +922,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("\tUse `:t` to terminate agents, connctions, listeners, and streams. Use `:l <agent>` for a listing of identifiers that can be used for that agent.")
 	case ":u", ":up", ":upload":
 		fmt.Println("--> COMMAND HELP FOR: :u, :up, :upload")
-		fmt.Println()
-		fmt.Println("TODO: Write this section when command is functional.")
 		fmt.Println()
 		fmt.Println("USAGE: ")
 		fmt.Println("\t:u <local_src_file>                            -  Uploads the local source file to the active agent's current directory.")
@@ -944,23 +957,23 @@ func terminalCommandHelp(topic string) {
 	case "agent", "agents":
 		fmt.Println("--> ABOUT AGENTS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Agents are remote nodes intended to be placed on the targeted 'victim' machines of the engagement. Agents should only be run on machines where the security researcher intends for Remote Code Execution (RCE) to occur.")
 	case "connection", "connections":
 		fmt.Println("--> ABOUT CONNECTIONS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Connections are existing network connections with other S.T.A.R. nodes, 'third-party' shells (such as netcat), or file transfers.")
 	case "constellation", "constellations":
 		fmt.Println("--> ABOUT CONSTELLATIONS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Constellations are a grouping of connected S.T.A.R. nodes.")
 	case "shell", "shells":
 		fmt.Println("--> ABOUT SHELLS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Shells are non-S.T.A.R. instances of RCE on remote boxes. These are commonly netcat or shells generated with 'msfvenom' or similar tools. S.T.A.R. has very limited interaction with these, allowing for command interaciton only.")
 	case "terminal", "terminals":
 		fmt.Println("--> ABOUT TERMINALS")
 		fmt.Println()
-		fmt.Println("TODO: Write this section when STAR is functional.")
+		fmt.Println("Terminals are 'local' nodes intended to be placed on machines which will be used by the security researcher or as a 'pivot' box. Terminals should be used instead of agents on pivot boxes where RCE is not desired.")
 	default:
 		fmt.Println("------------------------------ STAR Help Overview -----------------------------")
 		fmt.Println("=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=")
@@ -984,7 +997,6 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":j :jump \t Jump (change focus) to another agent.")
 		fmt.Fprintln(w, ":k :kill :killswitch \t Panic button! Destroy and cleanup constellation.")
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
-		fmt.Fprintln(w, ":p :proxy \t Creates a SOCKS5 server tunnel.")
 		fmt.Fprintln(w, ":pf :portforward \t Creates a port-forwarding tunnel.")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
 		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
@@ -1473,7 +1485,7 @@ func terminalCommandList(context string) (err error) {
 	} else {
 		agent, ok := agentFriendlyTracker[context]
 		if ok {
-			fmt.Println(fmt.Sprintf("%s (%s)", agent.FriendlyName, agent.Node.ID))
+			TerminalPrinter(star.ThisNode.ID, star.StreamID{}, fmt.Sprintf("%s (%s)", agent.FriendlyName, agent.Node.ID), "\n")
 			fmt.Println()
 			fmt.Fprintln(w, "Connections: \t ")
 			//Sort then print
@@ -1522,8 +1534,7 @@ func terminalCommandList(context string) (err error) {
 			fmt.Fprintln(w, " \t ")
 			w.Flush()
 		} else {
-			printError(fmt.Sprintf("%s is not a valid identifier! Use one of the following!", context))
-			terminalCommandList("all")
+			printError(fmt.Sprintf("%s is not a valid identifier!", context))
 		}
 	}
 
@@ -1558,7 +1569,7 @@ func terminalCommandLocalChangeDirectory(directory string) (err error) {
 	os.Chdir(directory)
 	newdirectory, _ := os.Getwd()
 
-	fmt.Println("Changed terminal working directory from [", olddirectory, "] to [", newdirectory, "]")
+	TerminalPrinter(star.ThisNode.ID, star.StreamID{}, "Changed terminal working directory from [", olddirectory, "] to [", newdirectory, "]", "\n")
 
 	return
 }
@@ -1611,7 +1622,7 @@ func terminalCommandLocalMakeDirectory(directory string) (err error) {
 
 func terminalCommandLocalPresentWorkingDirectory() (err error) {
 	path, _ := os.Getwd()
-	fmt.Println(path)
+	TerminalPrinter(star.ThisNode.ID, star.StreamID{}, path, "\n")
 
 	return
 }
@@ -1897,7 +1908,7 @@ func terminalCommandUpload(node star.NodeID, src string, dst string) (err error)
 
 func terminalCommandQuit(err error, errmsg string) {
 	if err != nil {
-		fmt.Println(err)
+		printError(err.Error())
 		printError(errmsg)
 		printInfo("Quitting due to error!")
 	} else {
@@ -1924,14 +1935,20 @@ func terminalCommandSendCommand(cmd string) (err error) {
 	} else {
 		if activeStream.IsEmptyStreamID() {
 			// New stream!
+			var n star.NodeID
+			var s star.StreamID
+
+			n = activeNode
+
 			meta := star.NewStreamMetaCommand(activeNode, cmd, func(data []byte) {
-				fmt.Printf("%s", data)
+				TerminalPrinter(n, s, fmt.Sprintf("%s", data))
 			}, func(s star.StreamID) {
 				if activeStream == s {
 					activeStream = star.StreamID{}
 				}
 			})
 			activeStream = meta.ID
+			s = meta.ID
 		} else {
 			meta, ok := star.GetActiveStream(activeStream)
 			if ok {
@@ -1982,38 +1999,6 @@ func terminalCommandChatHistory() (err error) {
 	return
 }
 
-func terminalCommandSocks5Proxy(src string, dst string) (err error) {
-	srcNode, srcProtocol, srcAddress, ok := terminalProxyForwardParser(src)
-	if !ok {
-		printError("Unable to continue setting up SOCKS5 proxy!")
-		return
-	}
-
-	n, ok_i := AgentTrackerGetInfoByFriendly(dst)
-	if !ok_i {
-		printError("Invalid identifier for <agent>, use one of the following agent identifiers:")
-		terminalCommandList("all")
-		return
-	}
-	dstNode := n.Node.ID
-
-	srcType := star.ConnectorType_Socks5ProxyTCP
-	if srcProtocol == "udp" {
-		srcType = star.ConnectorType_Socks5ProxyUDP
-	}
-
-	msg := star.NewMessageSocks5ProxyRequest(srcAddress, srcType, dstNode)
-	msg.Destination = srcNode
-
-	if msg.Destination == star.ThisNode.ID {
-		star.ProcessMessageSocks5Proxy(msg)
-	} else {
-		msg.Send(star.ConnectID{})
-	}
-
-	return
-}
-
 func terminalCommandPortForward(src string, dst string) (err error) {
 	srcNode, srcProtocol, srcAddress, ok := terminalProxyForwardParser(src)
 	if !ok {
@@ -2045,8 +2030,7 @@ func terminalCommandPortForward(src string, dst string) (err error) {
 	msg.Destination = srcNode
 	if msg.Destination == star.ThisNode.ID {
 		star.ProcessMessagePortForward(msg)
-		printInfo("If successful, a new port forward listener should be listed below:")
-		terminalCommandList("term001")
+		printInfo("Portforwarding should be successful.")
 	} else {
 		msg.Send(star.ConnectID{})
 	}
@@ -2187,9 +2171,6 @@ func TerminalProcessMessageError(msg *star.Message) {
 		case star.MessageErrorResponseTypePortForwardingConnectionNotFound:
 			histSubcontext = "Unable to find connection associated with port forwarder."
 			printError(fmt.Sprintf("%s has reported an error when attempting to find a connection associated with a port forwarder. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
-		case star.MessageErrorResponseTypeSocks5ProxyConnectionNotFound:
-			histSubcontext = "Unable to find connection associated with SOCKS5 proxy server."
-			printError(fmt.Sprintf("%s has reported an error when attempting to find a connection associated with a SOCKS5 proxy server. Context: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
 		default:
 			histSubcontext = "Unspecified error."
 			printError(fmt.Sprintf("%s has reported: %s", FriendlyAgentName(msg.Source, star.StreamID{}), errMsg.Context))
@@ -2426,7 +2407,7 @@ func TerminalProcessMessageFileServerInitiateTransfer(msg *star.Message) {
 func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
 	if stream.IsEmptyStreamID() {
 		if id.IsBroadcastNodeID() {
-			return "?????"
+			return ""
 		} else if id == star.ThisNode.ID {
 			return "This Terminal"
 		} else {
@@ -2439,7 +2420,7 @@ func FriendlyAgentName(id star.NodeID, stream star.StreamID) string {
 		}
 	} else {
 		if id.IsBroadcastNodeID() {
-			return "?????"
+			return ""
 		} else if id == star.ThisNode.ID {
 			return "This Terminal"
 		} else {

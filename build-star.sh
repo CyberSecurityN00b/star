@@ -12,7 +12,7 @@ contains() {
 # Setup pre-build files (to be embedded)
 # - Note: These will be deleted after this script is run
 openssl ecparam -genkey -name secp384r1 -out connection.key
-openssl req -new -x509 -sha256 -key connection.key -out connection.crt -days 30 -nodes -subj "/C=US" #-config connection.cfg
+openssl req -new -x509 -sha256 -key connection.key -out connection.crt -days 30 -nodes -subj "/C=US/CN=a" -config connection.cnf
 
 # Delete existing binaries
 rm -r ./bin

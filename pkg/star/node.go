@@ -13,6 +13,7 @@ type Node struct {
 	Type             NodeType
 	Neighbors        []NodeID
 	MessageProcessor func(*Message)
+	Printer          func(NodeID, StreamID, ...interface{})
 }
 
 type NodeInfo struct {

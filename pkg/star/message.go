@@ -1,7 +1,6 @@
 package star
 
 import (
-	"fmt"
 	"io/fs"
 	"os"
 	"sync"
@@ -164,10 +163,6 @@ const (
 	// MessageTypePortForwardRequest identifies the message as being related to the
 	// setting up of port forwarding
 	MessageTypePortForwardRequest
-
-	// MessageTypeSocks5ProxySourceRequest identifies the message as being related to the
-	// setting up of a SOCKS5 proxy
-	MessageTypeSocks5ProxyRequest
 )
 
 func (msg *Message) Process() {
@@ -206,13 +201,9 @@ const (
 	MessageErrorResponseTypeFileServerConnectionLost
 	MessageErrorResponseTypeFileServerConnectionNotFound
 	MessageErrorResponseTypePortForwardingConnectionNotFound
-	MessageErrorResponseTypeSocks5ProxyConnectionNotFound
 	MessageErrorResponseTypePortForwardingSourceAddressUnavailable
 	MessageErrorResponseTypePortForwardingDestinationAddressUnavailable
-	MessageErrorResponseTypeSocks5ProxySourceAddressUnavailable
-	MessageErrorResponseTypeSocks5ProxyDestinationAddressUnavailable
 	MessageErrorResponseTypePortForwardingConnectionLost
-	MessageErrorResponseTypeSocks5ProxyConnectionLost
 )
 
 func NewMessageError(errorType MessageErrorResponseType, context string) (msg *Message) {
@@ -541,8 +532,6 @@ func NewMessageRemoteLSResponse(Directory string, FileInfos []os.FileInfo) (msg 
 	}
 
 	msg.Data = GobEncode(MessageRemoteLSResponse{Directory: Directory, Files: Files})
-	fmt.Printf("%v+", Directory)
-	fmt.Printf("%v+", FileInfos)
 
 	return
 }
@@ -667,25 +656,6 @@ func NewMessagePortForwardRequest(SrcAddress string, SrcType ConnectorType, DstN
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/***************************** MessageSocks5Proxy ****************************/
-///////////////////////////////////////////////////////////////////////////////
-
-type MessageSocks5ProxyRequest struct {
-	DstNode    NodeID
-	SrcAddress string
-	SrcType    ConnectorType
-	DstAddress string
-}
-
-func NewMessageSocks5ProxyRequest(SrcAddress string, SrcType ConnectorType, DstNode NodeID) (msg *Message) {
-	msg = NewMessage()
-	msg.Type = MessageTypeSocks5ProxyRequest
-	msg.Data = GobEncode(MessageSocks5ProxyRequest{DstNode: DstNode, SrcAddress: SrcAddress, SrcType: SrcType})
-
-	return
-}
-
-///////////////////////////////////////////////////////////////////////////////
 /************************************ Send ***********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -696,6 +666,11 @@ func (msg *Message) Send(src ConnectID) {
 	destinationTrackerMutex.Lock()
 	dst, exists := destinationTracker[msg.Destination]
 	destinationTrackerMutex.Unlock()
+
+	// Either global or self->self
+	if msg.Destination == ThisNode.ID {
+		msg.Process()
+	}
 
 	if msg.Destination.IsBroadcastNodeID() || !exists {
 		for conn := range connectionTracker {

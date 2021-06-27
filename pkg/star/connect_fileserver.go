@@ -57,7 +57,6 @@ func (connector *FileServer_Connector) Connect() (err error) {
 	}
 
 	if err != nil {
-		print(err.Error())
 		NewMessageError(0, err.Error()).Send(ConnectID{})
 		return
 	}
@@ -125,7 +124,9 @@ func (connector *FileServer_Connector) Listen() (err error) {
 }
 
 func (connector *FileServer_Connector) Close() {
-	(*connector.Listener).Close()
+	if (*connector.Listener) != nil {
+		(*connector.Listener).Close()
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
