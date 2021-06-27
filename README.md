@@ -27,7 +27,7 @@ The inspiration for the tool is due to the author working on HackTheBox's Dante 
 
 For each new engagement, you should update the respository and re-run `./build-star.sh`. It is highly discouraged to use the same binaries between engagements. Node development is such that constants should not be expected to be the same between updates and a new SSL/TLS cert is generated each time as well.
 
-_Note: Until all features are developed, nodes will not enforce the requirement that connecting nodes have the expected SSL/TLS certification. Once development is completed, this will be implemented and batches of nodes will not be able to communicate with other batches of nodes._
+<b>Note: Only terminals and agents from the same build will be able to connect to each other.</b>
 
 ## Concepts and Terminology
 
