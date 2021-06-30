@@ -99,7 +99,7 @@ Built-In Remote Commands:
 | --- | --- |
 | :rcat | Outputs the contents of a remote file. |
 | :rcd | Changes the directory for the remote agent. |
-| :rls<br/>:ldir | Lists the files in the remote agent's working directory. |
+| :rls<br/>:rdir | Lists the files in the remote agent's working directory. |
 | :rmkdir | Creates a directory remotely and changes the agent's working directory to it. |
 | :rpwd | Prints the remote agents's working directory. |
 | :rtmpdir | Creates a temporary directory remotely and changes the agents's working directory to it. |
