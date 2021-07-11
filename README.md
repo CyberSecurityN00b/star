@@ -22,6 +22,7 @@ The inspiration for the tool is due to the author working on HackTheBox's Dante 
 1. Clone the repository to your local machine with `git clone https://github.com/CyberSecurityN00b/star.git`
 1. Search for `SECURITY RESEARCHER TODO` in the code for per-engagement recommendations
 1. From within the repository, run `./build-star.sh`
+    1. If you get `build command-line-arguments: cannot load embed: malformed module path "embed"` as an error message, run `go version` in the repository directory to ensure that it is using the correct version of go, which is 1.16+.
 1. You should now have a batch of agents (in `./bin/agents/`) and terminals (in `./bin/terminals/`); additionally, you will have a terminal compiled for your local machine at `./bin/star_terminal`.
 
 For each new engagement, you should update the respository and re-run `./build-star.sh`. It is highly discouraged to use the same binaries between engagements. Node development is such that constants should not be expected to be the same between updates and a new SSL/TLS cert is generated each time as well.
