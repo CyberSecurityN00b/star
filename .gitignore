@@ -22,3 +22,6 @@ embed/
 # Binaries
 bin/
 .DS_Store
+
+# Those pesky CSV hacker logs
+*.csv

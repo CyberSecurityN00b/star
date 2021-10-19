@@ -75,9 +75,10 @@ S.T.A.R. Commands:
 | :h<br/>:history | Displays the command/chat history. |
 | :i<br/>:info<br/> | Shows information for a specific agent. |
 | :j<br/>:jump | Changes focus (or "jumps to") another agent or stream. |
-| :k<br/>:kill<br/>:killswitch | Panic button! Destroy and cleans up constellation. _Note: Will not be fully implemented until development is complete._ |
+| :k<br/>:kill<br/>:killswitch | Panic button! Destroy and cleans up constellation. |
 | :l<br/>:list | Lists agents, connections, and streams (commands). |
 | :pf<br/>:portforward | Port forwarding. |
+| :portscan | Conduct TCP port scanning. |
 | :s<br/>:set<br/>:setting<br/>:settings | View/set configuration settings. |
 | :sync | Forces constellation synchronization. |
 | :t<br/>:terminate | Terminate an agent, connection, or stream (command). |

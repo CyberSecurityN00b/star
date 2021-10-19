@@ -39,7 +39,7 @@ while IFS= read -r target; do
     GOARCH=${target#*/}
     BIN_FILENAME="./bin/agents/star-agent-${GOOS}-${GOARCH}"
     if [[ "${GOOS}" == "windows" ]]; then BIN_FILENAME="${BIN_FILENAME}.exe"; fi
-    CMD="GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags \"-s -w\" -o ${BIN_FILENAME} ./agent.go"
+    CMD="GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags \"-s -w\" -trimpath -o ${BIN_FILENAME} ./agent.go"
     echo "--- Building ${BIN_FILENAME}"
     eval "${CMD}" || FAILURES="${FAILURES} agent:${GOOS}/${GOARCH}"
     post_build "${BIN_FILENAME}"
