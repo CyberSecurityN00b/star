@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -131,6 +133,19 @@ func initTerminal() {
 					tickerSynchronization.Reset(time.Duration(next) * time.Minute)
 				}
 			}
+		}
+	}()
+
+	// Setup CTRL+C catcher
+	sigcatcher := make(chan os.Signal)
+	signal.Notify(sigcatcher, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		for {
+			<-sigcatcher
+			printNotice("S.T.A.R. ignores CTRL+C!")
+			printNotice(" - If you meant to terminate the remote process, check out ':help :t'!")
+			printNotice(" - If you meant to terminate the terminal, check out ':help :q'!")
+			printNotice(" - If you meant to terminate the constellation, check out ':help :k'!")
 		}
 	}()
 
@@ -370,6 +385,20 @@ func handleTerminalInput(input string) {
 			terminalCommandPortForward(inputs[1], inputs[2])
 		} else {
 			terminalCommandHelp(":pf")
+		}
+	case ":portscan":
+		node, argoffset, ok := remoteAgentCheck()
+		if !ok {
+			terminalCommandHelp(":portscan")
+			printError("No active agent and no agent specified in command.")
+		} else {
+			if (len(inputs) - argoffset) == 2 {
+				TerminalCommandPortScan(node.Node.ID, inputs[1+argoffset], "")
+			} else if (len(inputs) - argoffset) == 3 {
+				TerminalCommandPortScan(node.Node.ID, inputs[1+argoffset], inputs[2+argoffset])
+			} else {
+				terminalCommandHelp(":portscan")
+			}
 		}
 	case ":rcat":
 		node, argoffset, ok := remoteAgentCheck()
@@ -815,10 +844,25 @@ func terminalCommandHelp(topic string) {
 		fmt.Println("\t:pf <src> <dst>                                        -  Creates a listener on <src> to forward traffic to <dst>.")
 		fmt.Println("\t:pf term:tcp:127.0.0.1:9022 agent001:tcp:127.0.0.1:22  -  Creates a listener on the local terminal to forward traffic to the local SSH port on agent001.")
 		fmt.Println()
-		fmt.Println("DESCRIPTION:")
+		fmt.Println("DESCRIPTION: Allows for forwarding a single port.")
 		fmt.Println("\t")
 		fmt.Println()
 		fmt.Println("\tNote: Both <src> and <dst> must follow the format of <agent>:<protocol>:<ip>:<port>, where protocol is udp or tcp. Due to the nature of port forwarding, no assumptions will be made when one of these are not specified. In the case of <src>, 'term' may be specified instead of an agent to create the listener on the local terminal.")
+		fmt.Println()
+	case ":portscan":
+		fmt.Println("--> COMMAND HELP FOR: :portscan")
+		fmt.Println()
+		fmt.Println("USAGE: ")
+		fmt.Println("\t:portscan <ip>                                -  Runs a full TCP port scan against <ip> from the currently focused agent.")
+		fmt.Println("\t:portscan <ip> <ports>                        -  Runs a select TCP port scan against <ip> from the currently focused agent. Ports are comma-separated.")
+		fmt.Println("\t:portscan <agent> <ip>                        -  Runs a full TCP port scan against <ip> from the specified agent.")
+		fmt.Println("\t:portscan <agent> <ip> <ports>                -  Runs a select TCP port scan against <ip> from the specified agent. Ports are comma-separated.")
+		fmt.Println("\t:portscan agent001 10.10.10.10 22,80,443,8080 - Runs a TCP port scan against 10.10.10.10 from agent001 for the four ports specified.")
+		fmt.Println()
+		fmt.Println("DESCRIPTION:")
+		fmt.Println("\tConducts a TCP port scan.")
+		fmt.Println()
+		fmt.Println("\tNote: You can pass a CIDR instead of an IP for this to double as host discovery, but will be very noisy. You will get a response back for each IP in the CIDR.")
 		fmt.Println()
 	case ":rcat":
 		fmt.Println("--> COMMAND HELP FOR: :rcat")
@@ -998,6 +1042,7 @@ func terminalCommandHelp(topic string) {
 		fmt.Fprintln(w, ":k :kill :killswitch \t Panic button! Destroy and cleanup constellation.")
 		fmt.Fprintln(w, ":l :list \t Lists agents, connections, and commands.")
 		fmt.Fprintln(w, ":pf :portforward \t Creates a port-forwarding tunnel.")
+		fmt.Fprintln(w, ":portscan \t Runs a TCP port scan.")
 		fmt.Fprintln(w, ":s :set :setting :settings \t View/set configuration settings.")
 		fmt.Fprintln(w, ":sync \t Force constellation synchronization.")
 		fmt.Fprintln(w, ":t :terminate \t Terminates an agent, connection, or command.")
@@ -2070,6 +2115,20 @@ func terminalProxyForwardParser(a string) (node star.NodeID, protocol string, ad
 	return
 }
 
+func TerminalCommandPortScan(node star.NodeID, ip string, ports string) {
+	msg := star.NewMessagePortScanRequest(ip, ports)
+	msg.Destination = node
+	msg.Send(star.ConnectID{})
+
+	if ports == "" {
+		printInfo(fmt.Sprintf("Requesting that %s conduct a portscan against %s for all TCP ports.", FriendlyAgentName(node, star.StreamID{}), ip))
+	} else {
+		printInfo(fmt.Sprintf("Requesting that %s conduct a portscan against %s for the following TCP ports: %s", FriendlyAgentName(node, star.StreamID{}), ip, ports))
+	}
+
+	return
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 
 func TerminalProcessMessage(msg *star.Message) {
@@ -2100,6 +2159,8 @@ func TerminalProcessMessage(msg *star.Message) {
 		TerminalProcessMessageChat(msg)
 	case star.MessageTypeFileServerInitiateTransfer:
 		TerminalProcessMessageFileServerInitiateTransfer(msg)
+	case star.MessageTypePortScanResponse:
+		TerminalProcessMessagePortScanResponse(msg)
 	}
 }
 
@@ -2399,6 +2460,18 @@ func TerminalProcessMessageFileServerInitiateTransfer(msg *star.Message) {
 	RecordLog(time.Now(), msg.Source, "fileserver", "transfer initated", src)
 
 	return
+}
+
+func TerminalProcessMessagePortScanResponse(msg *star.Message) {
+	var resMsg star.MessagePortScanResponse
+
+	err := msg.GobDecodeMessage(&resMsg)
+	if err != nil {
+		return
+	}
+
+	printInfo(fmt.Sprintf("%s reports that the port scan for %s has completed, with the following TCP ports found to be open: %s", FriendlyAgentName(msg.Source, star.StreamID{}), resMsg.IP, resMsg.OpenPorts))
+	RecordLog(time.Now(), msg.Source, "portscan results", resMsg.IP, resMsg.OpenPorts)
 }
 
 ///////////////////////////////////////////////////////////////////////////////

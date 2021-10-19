@@ -163,6 +163,10 @@ const (
 	// MessageTypePortForwardRequest identifies the message as being related to the
 	// setting up of port forwarding
 	MessageTypePortForwardRequest
+
+	// MessageTypePortScan identifies the message as being related to a TCP port scan
+	MessageTypePortScanRequest
+	MessageTypePortScanResponse
 )
 
 func (msg *Message) Process() {
@@ -656,6 +660,36 @@ func NewMessagePortForwardRequest(SrcAddress string, SrcType ConnectorType, DstN
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+/****************************** MessagePortScan ******************************/
+///////////////////////////////////////////////////////////////////////////////
+
+type MessagePortScanRequest struct {
+	IP    string
+	Ports string
+}
+
+type MessagePortScanResponse struct {
+	IP        string
+	OpenPorts string
+}
+
+func NewMessagePortScanRequest(IP string, Ports string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypePortScanRequest
+	msg.Data = GobEncode(MessagePortScanRequest{IP: IP, Ports: Ports})
+
+	return
+}
+
+func NewMessagePortScanResponse(IP string, OpenPorts string) (msg *Message) {
+	msg = NewMessage()
+	msg.Type = MessageTypePortScanResponse
+	msg.Data = GobEncode(MessagePortScanResponse{IP: IP, OpenPorts: OpenPorts})
+
+	return
+}
+
+///////////////////////////////////////////////////////////////////////////////
 /************************************ Send ***********************************/
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -690,7 +724,9 @@ func (msg *Message) Send(src ConnectID) {
 			destinationTrackerMutex.Lock()
 			delete(destinationTracker, msg.Destination)
 			destinationTrackerMutex.Unlock()
+			connectionTrackerMutex.Unlock()
 			msg.Send(src)
+			connectionTrackerMutex.Lock()
 		}
 	}
 }
