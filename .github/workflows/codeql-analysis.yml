@@ -50,6 +50,9 @@ jobs:
         # Prefix the list here with "+" to use these queries and those in the config file.
         # queries: ./path/to/local/query, your-org/your-repo/queries@main
 
+    - name: Create "fake" key/pair
+      run: touch connection.crt && touch connection.key
+
     - name: Build Agent
       run: go build -v ./agent.go
         
