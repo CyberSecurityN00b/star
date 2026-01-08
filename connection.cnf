@@ -11,4 +11,4 @@ subjectAltName = @alt_names
 [ v3_ca ]
 subjectAltName = @alt_names
 [ alt_names ]
-DNS.1 = *
+DNS.1 = a
